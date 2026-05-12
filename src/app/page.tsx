@@ -43,6 +43,8 @@ export default function Dashboard() {
     cctv: true,
     earthquakes: true,
     fires: false,
+    weather: true,
+    infrastructure: true,
     global_incidents: false,
     gps_jamming: false,
     day_night: true,
@@ -128,6 +130,10 @@ export default function Dashboard() {
     // Priority 5: GDELT — 8s delay
     setTimeout(() => fetchEndpoint('/api/gdelt', d => ({ gdelt: d.events })), 8000);
 
+    // Priority 6: Weather (NASA EONET) + Infrastructure — 4s delay
+    setTimeout(() => fetchEndpoint('/api/weather', d => ({ weather_events: d.events })), 4000);
+    setTimeout(() => fetchEndpoint('/api/infrastructure', d => ({ infrastructure: d.infrastructure })), 4500);
+
     // Polling
     const intervals = [
       setInterval(() => fetchEndpoint('/api/flights'), 60000),
@@ -135,6 +141,7 @@ export default function Dashboard() {
       setInterval(() => fetchEndpoint('/api/news'), 300000),
       setInterval(() => fetchEndpoint('/api/markets'), 120000),
       setInterval(() => fetchEndpoint('/api/fires'), 600000),
+      setInterval(() => fetchEndpoint('/api/weather', d => ({ weather_events: d.events })), 1800000),
     ];
     return () => intervals.forEach(clearInterval);
   }, []);
@@ -172,6 +179,14 @@ export default function Dashboard() {
   }, [mouseCoords?.lat, mouseCoords?.lng, activeLayers.cctv]);
 
   const totalFlights = (data.commercial_flights?.length||0)+(data.private_flights?.length||0)+(data.private_jets?.length||0)+(data.military_flights?.length||0);
+
+  // Dynamic Threat Level based on active global incidents
+  const threatScore = (data.earthquakes?.filter((e: any) => e.magnitude >= 5).length || 0)
+    + (data.weather_events?.filter((w: any) => w.severity === 'high').length || 0) * 2
+    + (data.gdelt?.length || 0) * 0.1
+    + (data.fires?.length || 0) * 0.01;
+  const threatLevel = threatScore >= 10 ? 'CRITICAL' : threatScore >= 5 ? 'HIGH' : threatScore >= 2 ? 'ELEVATED' : 'NOMINAL';
+  const threatColor = threatLevel === 'CRITICAL' ? '#FF1744' : threatLevel === 'HIGH' ? '#FF9500' : threatLevel === 'ELEVATED' ? '#FFD700' : '#00E676';
 
   return (
     <main className="fixed inset-0 w-full h-full bg-[var(--bg-void)] overflow-hidden">
@@ -215,19 +230,21 @@ export default function Dashboard() {
       {/* ── TOP-RIGHT STATUS ── */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 3 }} className="absolute top-4 right-5 z-[200] pointer-events-none flex items-center gap-4 text-[7px] font-mono tracking-widest text-[var(--text-muted)]">
         <span>SYS: <span className={backendStatus === 'connected' ? 'text-[var(--alert-green)]' : 'text-[var(--alert-red)]'}>{backendStatus.toUpperCase()}</span></span>
+        <span>THREAT: <span style={{ color: threatColor, fontWeight: 700 }}>{threatLevel}</span></span>
         <span>UPTIME: <span className="text-[var(--gold-primary)]">{uptime}</span></span>
-        <span>V1.1.0</span>
+        <span>V1.3.0</span>
       </motion.div>
 
       {/* ── LEFT HUD ── */}
       <div className="absolute left-5 top-20 bottom-24 w-72 flex flex-col gap-3 z-[200] pointer-events-none overflow-y-auto styled-scrollbar pr-1">
         <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} />
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }} className="glass-panel px-3 py-2.5 pointer-events-auto">
-          <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="grid grid-cols-5 gap-2 text-center">
             <div><div className="hud-label">AIRCRAFT</div><div className="hud-value text-[10px]">{totalFlights.toLocaleString()}</div></div>
             <div><div className="hud-label">SATS</div><div className="hud-value text-[10px]">{(data.satellites?.length||0).toLocaleString()}</div></div>
             <div><div className="hud-label">CCTV</div><div className="hud-value text-[10px]">{(data.cameras?.length||0).toLocaleString()}</div></div>
-            <div><div className="hud-label">FIRES</div><div className="hud-value text-[10px]">{(data.fires?.length||0).toLocaleString()}</div></div>
+            <div><div className="hud-label">WEATHER</div><div className="hud-value text-[10px]" style={{ color: '#E040FB' }}>{(data.weather_events?.length||0)}</div></div>
+            <div><div className="hud-label">NUCLEAR</div><div className="hud-value text-[10px]" style={{ color: '#76FF03' }}>{(data.infrastructure?.length||0)}</div></div>
           </div>
         </motion.div>
       </div>

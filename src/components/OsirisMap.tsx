@@ -103,7 +103,7 @@ export default function OsirisMap({ data, activeLayers, onEntityClick, onMouseCo
       createDot(map, 'dot-cctv', '#39FF14', 10);
 
       // Sources
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Day/Night
@@ -152,6 +152,38 @@ export default function OsirisMap({ data, activeLayers, onEntityClick, onMouseCo
       map.addLayer({ id: 'jam-label', type: 'symbol', source: 'gps-jamming', layout: {
         'text-field': ['concat','GPS JAM ',['to-string',['get','severity']],'%'], 'text-size': 10, 'text-font': ['Open Sans Bold'], 'text-allow-overlap': true,
       }, paint: { 'text-color': '#FF4444', 'text-halo-color': '#000', 'text-halo-width': 1 }});
+
+      // Weather Events (NASA EONET — storms, volcanoes)
+      map.addLayer({ id: 'weather-glow', type: 'circle', source: 'weather', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,12, 5,20, 10,30],
+        'circle-color': '#E040FB', 'circle-opacity': 0.1, 'circle-blur': 1,
+      }});
+      map.addLayer({ id: 'weather-dots', type: 'circle', source: 'weather', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,5, 5,8, 10,14],
+        'circle-color': ['match', ['get','icon'], 'cyclone','#E040FB', 'volcano','#FF1744', '#E040FB'],
+        'circle-opacity': 0.8,
+        'circle-stroke-width': 2, 'circle-stroke-color': '#E040FB', 'circle-stroke-opacity': 0.4,
+      }});
+      map.addLayer({ id: 'weather-label', type: 'symbol', source: 'weather', layout: {
+        'text-field': ['get','title'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 2], 'text-max-width': 14, 'text-allow-overlap': false,
+      }, paint: { 'text-color': '#E040FB', 'text-halo-color': '#000', 'text-halo-width': 1, 'text-opacity': 0.8 }});
+
+      // Nuclear Infrastructure
+      map.addLayer({ id: 'infra-glow', type: 'circle', source: 'infrastructure', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,8, 5,14, 10,22],
+        'circle-color': '#76FF03', 'circle-opacity': 0.08, 'circle-blur': 1,
+      }});
+      map.addLayer({ id: 'infra-dots', type: 'circle', source: 'infrastructure', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,4, 5,6, 10,10],
+        'circle-color': ['match', ['get','status'], 'Active Conflict Zone','#FF1744', 'Destroyed / Decommissioning','#757575', '#76FF03'],
+        'circle-opacity': 0.8,
+        'circle-stroke-width': 2, 'circle-stroke-color': '#76FF03', 'circle-stroke-opacity': 0.4,
+      }});
+      map.addLayer({ id: 'infra-label', type: 'symbol', source: 'infrastructure', minzoom: 5, layout: {
+        'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 2], 'text-max-width': 14, 'text-allow-overlap': false,
+      }, paint: { 'text-color': '#76FF03', 'text-halo-color': '#000', 'text-halo-width': 1, 'text-opacity': 0.7 }});
 
       // Satellites
       map.addLayer({ id: 'sat-dots', type: 'circle', source: 'satellites', paint: {
@@ -303,9 +335,49 @@ export default function OsirisMap({ data, activeLayers, onEntityClick, onMouseCo
     });
 
     // Cursor handlers for all clickable layers
-    ['cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots'].forEach(layer => {
+    ['cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','infra-dots'].forEach(layer => {
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+    });
+
+    // ── Weather Events (NASA EONET) ──
+    map.on('click', 'weather-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      const iconEmoji = p.icon === 'cyclone' ? '🌀' : p.icon === 'volcano' ? '🌋' : '⚡';
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(224,64,251,0.3);">
+        <div style="color:#E040FB;font-size:14px;font-weight:700;margin-bottom:6px;">${iconEmoji} ${p.type || 'Weather Event'}</div>
+        <div style="font-size:10px;color:#E8E6E0;margin-bottom:8px;line-height:1.4;">${p.title || 'Unknown event'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;margin-bottom:8px;">
+          <div><span style="color:#5C5A54;">SEVERITY</span><br/><span style="color:${p.severity === 'high' ? '#FF1744' : '#FFD700'};">${(p.severity||'low').toUpperCase()}</span></div>
+          <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          ${p.source ? `<a href="${p.source}" target="_blank" style="${linkStyle}color:#E040FB;border:1px solid rgba(224,64,251,0.4);background:rgba(224,64,251,0.1);">📡 SOURCE</a>` : ''}
+          <a href="https://eonet.gsfc.nasa.gov/api/v3/events/${p.id || ''}" target="_blank" style="${linkStyle}color:#D4AF37;border:1px solid rgba(212,175,55,0.4);background:rgba(212,175,55,0.1);">🛰️ NASA EONET</a>
+        </div>
+      </div>`);
+    });
+
+    // ── Nuclear Infrastructure ──
+    map.on('click', 'infra-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      const statusColor = p.status === 'Active Conflict Zone' ? '#FF1744' : p.status === 'Operational' ? '#76FF03' : '#757575';
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(118,255,3,0.3);">
+        <div style="color:#76FF03;font-size:14px;font-weight:700;margin-bottom:4px;">☢️ ${p.name || 'Nuclear Facility'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9px;margin-bottom:8px;">
+          <div><span style="color:#5C5A54;">STATUS</span><br/><span style="color:${statusColor};">${p.status || '—'}</span></div>
+          <div><span style="color:#5C5A54;">CITY</span><br/><span style="color:#E8E6E0;">${p.city || '—'}, ${p.country || ''}</span></div>
+          <div><span style="color:#5C5A54;">REACTORS</span><br/><span style="color:#76FF03;">${p.reactors || '—'}</span></div>
+          <div><span style="color:#5C5A54;">CAPACITY</span><br/><span style="color:#E8E6E0;">${p.capacityMW ? p.capacityMW.toLocaleString() + ' MW' : '—'}</span></div>
+          <div><span style="color:#5C5A54;">OWNER</span><br/><span style="color:#E8E6E0;">${p.owner || '—'}</span></div>
+          <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
+        </div>
+        <a href="https://www.google.com/maps/@${coords[1]},${coords[0]},14z/data=!3m1!1e3" target="_blank" style="${linkStyle}color:#76FF03;border:1px solid rgba(118,255,3,0.4);background:rgba(118,255,3,0.1);">🗺️ SATELLITE VIEW</a>
+      </div>`);
     });
 
     return () => { map.remove(); mapRef.current = null; };
@@ -360,6 +432,8 @@ export default function OsirisMap({ data, activeLayers, onEntityClick, onMouseCo
     setGeo('gps-jamming', activeLayers.gps_jamming && data.gps_jamming ? data.gps_jamming.map((z: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [z.lng, z.lat] }, properties: { severity: z.severity } })) : []);
     setGeo('cctv', activeLayers.cctv && data.cameras ? data.cameras.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { name: c.name, city: c.city, country: c.country, source: c.source, feed_url: c.feed_url } })) : []);
     setGeo('fires', activeLayers.fires && data.fires ? data.fires.map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { brightness: f.brightness } })) : []);
+    setGeo('weather', activeLayers.weather && data.weather_events ? data.weather_events.map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: { title: w.title, type: w.type, icon: w.icon, severity: w.severity, source: w.source, id: w.id } })) : []);
+    setGeo('infrastructure', activeLayers.infrastructure && data.infrastructure ? data.infrastructure.map((i: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [i.lng, i.lat] }, properties: { name: i.name, city: i.city, country: i.country, status: i.status, reactors: i.reactors, capacityMW: i.capacityMW, owner: i.owner } })) : []);
   }, [mapReady, data, activeLayers]);
 
   // Visibility
@@ -376,6 +450,8 @@ export default function OsirisMap({ data, activeLayers, onEntityClick, onMouseCo
     setVis(['fl-military'], activeLayers.military);
     setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv);
     setVis(['fires-heat'], activeLayers.fires);
+    setVis(['weather-glow','weather-dots','weather-label'], activeLayers.weather);
+    setVis(['infra-glow','infra-dots','infra-label'], activeLayers.infrastructure);
   }, [mapReady, activeLayers]);
 
   // Fly-to
