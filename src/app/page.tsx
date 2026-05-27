@@ -82,7 +82,7 @@ const DataThroughput = ({ data }: { data: any }) => {
       const megabytes = estimatedBytes / 1024 / 1024;
       setThroughput(megabytes > 0 ? (megabytes * 1.5).toFixed(2) : "0.00");
       
-      setPingTime(prev => prev === null ? Math.floor(45 + Math.random() * 20) : Math.max(20, prev + Math.floor((Math.random() - 0.5) * 10)));
+      setPingTime(Math.floor(30 + estimatedBytes / 100000));
     }, 2500);
     return () => clearInterval(iv);
   }, [data]);
