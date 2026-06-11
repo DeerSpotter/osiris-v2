@@ -13,6 +13,8 @@ interface LayerPanelProps {
   activeLayers: any;
   setActiveLayers: React.Dispatch<React.SetStateAction<any>>;
   isMobile?: boolean;
+  theme?: 'core' | 'ghost';
+  setTheme?: (theme: 'core' | 'ghost') => void;
 }
 
 const LAYER_GROUPS = [
@@ -104,7 +106,7 @@ function Shield(props: any) {
   );
 }
 
-function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPanelProps) {
+function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme }: LayerPanelProps) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
   const toggle = (key: string) => setActiveLayers((prev: any) => ({ ...prev, [key]: !prev[key] }));
@@ -174,6 +176,39 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
             </div>
           </div>
         ))}
+
+        {/* MOBILE THEME TOGGLE — 2-MODE */}
+        {setTheme && (
+          <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-white/5">
+            <div className="text-[10px] font-bold font-mono tracking-widest border-b border-white/10 pb-1" style={{ color: 'rgba(var(--gold-rgb), 1)' }}>
+              MODE
+            </div>
+            <div className="flex gap-1 p-0.5 rounded-lg bg-white/5 border border-white/5">
+              {(['core', 'ghost'] as const).map((t) => {
+                const isActive = theme === t;
+                const color = t === 'core' ? '#D4AF37' : '#B388FF';
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`flex-1 py-1.5 rounded-md text-[10px] font-mono uppercase tracking-[0.15em] transition-all duration-300 ${
+                      isActive ? 'font-bold' : 'text-white/30 hover:text-white/50'
+                    }`}
+                    style={isActive ? {
+                      color,
+                      background: `${color}12`,
+                      boxShadow: `0 0 16px ${color}25, inset 0 0 12px ${color}08`,
+                      border: `1px solid ${color}35`,
+                    } : { border: '1px solid transparent' }}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }
@@ -272,6 +307,37 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
           );
         })}
       </div>
+
+      {/* DESKTOP THEME TOGGLE — 2-MODE SWITCH */}
+      {setTheme && (
+        <div className="mt-auto px-2 pt-4 border-t border-white/5 flex flex-col items-center gap-2 relative z-50">
+          <div className="text-[7px] font-mono tracking-[0.25em] text-white/25 mb-0.5">MODE</div>
+          <div className="flex flex-col gap-1.5 w-full">
+            {(['core', 'ghost'] as const).map((t) => {
+              const isActive = theme === t;
+              const color = t === 'core' ? '#D4AF37' : '#B388FF';
+              return (
+                <button 
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={`text-[9px] font-mono tracking-[0.2em] py-1.5 rounded-md transition-all duration-300 ${
+                    isActive ? 'font-bold' : 'text-white/25 hover:text-white/50'
+                  }`}
+                  style={isActive ? {
+                    color,
+                    background: `${color}10`,
+                    boxShadow: `0 0 14px ${color}20, inset 0 0 10px ${color}06`,
+                    border: `1px solid ${color}30`,
+                  } : { border: '1px solid transparent' }}
+                >
+                  {t.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
