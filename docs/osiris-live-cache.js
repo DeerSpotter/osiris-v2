@@ -16,7 +16,7 @@ const bootSequence = $('bootSequence');
 
 const DEG = Math.PI / 180;
 const TWO_PI = Math.PI * 2;
-const VERSION = '20260613-pages-performance-cache';
+const VERSION = '20260613-pages-performance-cables';
 const scriptBase = new URL('.', document.currentScript?.src || location.href);
 const dataBase = new URL('data/', scriptBase);
 const dataUrl = (name) => new URL(name, dataBase).href;
@@ -36,7 +36,7 @@ const palette = {
 
 const model = {
   world: [], states: [], nodes: [], routes: [], liveAt: null,
-  fullLiveRequested: false, statesRequested: false, renderEveryMs: innerWidth < 760 ? 40 : 33, lastFrame: 0,
+  fullLiveRequested: false, statesRequested: false, renderEveryMs: innerWidth < 760 ? 42 : 33, lastFrame: 0,
   ready: { world: false, states: false, live: false, fullLive: false }, showRoutes: true,
   view: { lon: -62, lat: 22, targetLon: -62, targetLat: 22, zoom: 1 },
   pointer: { dragging: false, id: null, x: 0, y: 0, map: new Map(), pinchDistance: 1, pinchZoom: 1 },
@@ -66,7 +66,7 @@ tickZulu();
 setInterval(tickZulu, 1000);
 
 let bootStep = 0;
-const bootLines = ['LOADING LOCAL CACHE...', 'FETCHING REPO DATA...', 'STAGING RECON LAYERS...', 'RECON ONLINE'];
+const bootLines = ['LOADING LOCAL CACHE...', 'FETCHING REPO DATA...', 'STAGING CABLE MESH...', 'RECON ONLINE'];
 const bootTimer = setInterval(() => {
   bootStep += 1;
   if (bootSequence) bootSequence.textContent = bootLines[Math.min(bootStep, bootLines.length - 1)];
@@ -89,7 +89,6 @@ async function loadJson(primary, fallback) {
   }
   throw new Error(`Failed to load ${primary}`);
 }
-function idle(fn, timeout = 1800) { if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout }); else setTimeout(fn, 400); }
 
 function resize() {
   const dpr = Math.min(devicePixelRatio || 1, innerWidth < 760 ? 1.5 : 2);
@@ -103,7 +102,7 @@ function resize() {
   const base = mobile ? innerWidth * .72 : Math.min(innerWidth, innerHeight) * .44;
   const max = Math.max(innerWidth, innerHeight) * (mobile ? 1.62 : 1.34);
   model.size.r = clamp(base * model.view.zoom, 220, max);
-  model.renderEveryMs = mobile ? 40 : 33;
+  model.renderEveryMs = mobile ? 42 : 33;
 }
 
 function project(lat, lon, lift = 1) {
@@ -164,7 +163,7 @@ function drawLine(coords, color, width = 1, alpha = 1, lift = 1) {
 function drawRoutes() {
   if (!model.showRoutes) return;
   const d = lod();
-  const max = model.view.zoom > 2.4 ? 520 : model.view.zoom > 1.5 ? 300 : 180;
+  const max = model.ready.fullLive ? (model.view.zoom > 2.4 ? 1000 : model.view.zoom > 1.5 ? 760 : 520) : model.routes.length;
   for (let i = 0; i < Math.min(model.routes.length, max); i += 1) {
     const r = model.routes[i];
     drawLine(r.coordinates, r.color || palette.route, r.width || .65, (r.alpha ?? .32) * d.route, 1.006);
@@ -223,11 +222,11 @@ function frame(time = 0) {
   model.view.lat += (model.view.targetLat - model.view.lat) * .08;
   if (!model.pointer.dragging && model.pointer.map.size === 0 && model.view.zoom < 1.45) model.view.targetLon = normLon(model.view.targetLon + .012);
   if (model.view.zoom > 1.48) ensureStates();
-  if (model.view.zoom > 1.35) ensureFullLive();
+  if (model.view.zoom > 1.8) ensureFullLive();
   ctx.clearRect(0, 0, model.size.w, model.size.h); drawGlobe(time);
   if (readout) {
     const detail = model.view.zoom >= 1.68 && model.ready.states ? 'STATE OUTLINES' : model.view.zoom >= 1.04 && model.ready.world ? 'COUNTRY OUTLINES' : 'CONTINENT COASTLINES';
-    const cache = model.ready.fullLive ? 'FULL CACHE' : model.ready.live ? 'FAST CACHE' : 'CACHE MISS';
+    const cache = model.ready.fullLive ? 'FULL CACHE' : model.ready.live ? 'FAST CABLE MESH' : 'CACHE MISS';
     readout.textContent = `${detail} · ${cache} · Z ${model.view.zoom.toFixed(2)}`;
   }
 }
@@ -267,9 +266,9 @@ function applyLive(live, full = false) {
   if (!nodes.length && !routes.length) return false;
   model.nodes = nodes; model.routes = routes; model.liveAt = live.generatedAt; model.ready.live = true; model.ready.fullLive = full;
   if (feedCount) feedCount.textContent = String(live.counts?.totalNodes || nodes.length);
-  if (systemState) systemState.textContent = full ? 'FULL CACHE' : 'FAST CACHE';
-  if (eventTitle) eventTitle.textContent = full ? 'FULL REPO DATA ONLINE' : 'FAST REPO CACHE ONLINE';
-  if (eventMeta) eventMeta.textContent = `${nodes.length.toLocaleString()} nodes · ${routes.length.toLocaleString()} repo routes`;
+  if (systemState) systemState.textContent = full ? 'FULL CACHE' : 'CABLE MESH';
+  if (eventTitle) eventTitle.textContent = full ? 'FULL REPO DATA ONLINE' : 'REPO CABLE MESH ONLINE';
+  if (eventMeta) eventMeta.textContent = `${nodes.length.toLocaleString()} nodes · ${routes.length.toLocaleString()} cable routes`;
   return true;
 }
 async function ensureFullLive() { if (model.fullLiveRequested || model.ready.fullLive) return; model.fullLiveRequested = true; try { applyLive(await loadJson(urls.liveFull), true); } catch {} }
@@ -281,11 +280,10 @@ async function hydrate() {
     if (feedCount) feedCount.textContent = String(model.nodes.length);
     if (systemState) systemState.textContent = 'CACHE MISS';
     if (eventTitle) eventTitle.textContent = 'WAITING FOR REPO DATA CACHE';
-    if (eventMeta) eventMeta.textContent = 'Run the Pages data cache workflow to populate live nodes and routes.';
+    if (eventMeta) eventMeta.textContent = 'Run the Pages data cache workflow to populate live nodes and cable routes.';
   }
-  idle(ensureFullLive, 2200);
 }
-function setZoom(z) { model.view.zoom = clamp(z, .74, 4.2); resize(); if (model.view.zoom > 1.48) ensureStates(); if (model.view.zoom > 1.35) ensureFullLive(); }
+function setZoom(z) { model.view.zoom = clamp(z, .74, 4.2); resize(); if (model.view.zoom > 1.48) ensureStates(); if (model.view.zoom > 1.8) ensureFullLive(); }
 function resetView() { model.view.targetLon = -62; model.view.targetLat = 22; setZoom(1); }
 function bind() {
   canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); model.pointer.map.set(e.pointerId, { x: e.clientX, y: e.clientY }); canvas.setPointerCapture(e.pointerId); if (model.pointer.map.size > 1) { const [a,b] = [...model.pointer.map.values()]; model.pointer.pinchDistance = Math.hypot(a.x-b.x,a.y-b.y) || 1; model.pointer.pinchZoom = model.view.zoom; model.pointer.dragging = false; } else { model.pointer.dragging = true; model.pointer.id = e.pointerId; model.pointer.x = e.clientX; model.pointer.y = e.clientY; } });
@@ -294,7 +292,7 @@ function bind() {
   canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end); canvas.addEventListener('lostpointercapture', end);
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(model.view.zoom + (e.deltaY > 0 ? -.12 : .12) * Math.max(1, model.view.zoom * .62)); }, { passive: false });
   locateBtn?.addEventListener('click', resetView);
-  orbitBtn?.addEventListener('click', () => { model.showRoutes = !model.showRoutes; orbitBtn.classList.toggle('disabled', !model.showRoutes); if (eventTitle) eventTitle.textContent = model.showRoutes ? 'REPO ROUTES ONLINE' : 'REPO ROUTES MUTED'; });
+  orbitBtn?.addEventListener('click', () => { model.showRoutes = !model.showRoutes; orbitBtn.classList.toggle('disabled', !model.showRoutes); if (eventTitle) eventTitle.textContent = model.showRoutes ? 'REPO CABLE ROUTES ONLINE' : 'REPO CABLE ROUTES MUTED'; });
   document.querySelectorAll('.bottom-nav button').forEach((b) => b.addEventListener('click', () => { document.querySelectorAll('.bottom-nav button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); if (eventTitle) eventTitle.textContent = `${(b.dataset.layer || 'recon').toUpperCase()} LAYER SELECTED`; }));
   addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'r') resetView(); if (e.key.toLowerCase() === 'o') orbitBtn?.click(); if (e.key === '+' || e.key === '=') setZoom(model.view.zoom + .18); if (e.key === '-' || e.key === '_') setZoom(model.view.zoom - .18); });
   addEventListener('resize', resize);
