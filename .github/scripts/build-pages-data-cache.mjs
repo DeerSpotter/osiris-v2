@@ -4,7 +4,7 @@ import path from 'node:path';
 const outDir = path.join(process.cwd(), 'docs', 'data');
 await mkdir(outDir, { recursive: true });
 
-const UA = 'osiris-v2-pages-cache/1.0 (+https://github.com/DeerSpotter/osiris-v2)';
+const UA = 'osiris-v2-pages-cache/1.1 (+https://github.com/DeerSpotter/osiris-v2)';
 const OSIRIS = 'https://osirisai.live';
 
 async function fetchJson(url, fallback = null) {
@@ -104,6 +104,38 @@ for (const feature of cableData.features || []) {
   if (routes.length >= 1000) break;
 }
 
+function spatialSample(items, limit, degrees = 6) {
+  const selected = [];
+  const seen = new Set();
+  for (const item of items.filter((n) => n.priority)) {
+    selected.push(item);
+    if (selected.length >= limit) return selected;
+  }
+  for (const item of items) {
+    const key = `${Math.floor((item.lat + 90) / degrees)}:${Math.floor((item.lon + 180) / degrees)}:${item.tone || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!selected.includes(item)) selected.push(item);
+    if (selected.length >= limit) return selected;
+  }
+  for (const item of items) {
+    if (!selected.includes(item)) selected.push(item);
+    if (selected.length >= limit) return selected;
+  }
+  return selected;
+}
+
+const liteNodes = spatialSample(nodes, 420, 5).map((n) => ({
+  ...n,
+  label: n.priority ? n.label : ''
+}));
+const liteRoutes = routes.slice(0, 260).map((r) => ({
+  ...r,
+  width: 0.65,
+  alpha: 0.30,
+  coordinates: resample(r.coordinates, 32)
+})).filter((r) => r.coordinates.length > 1);
+
 const payload = {
   schema: 1,
   generatedAt: new Date().toISOString(),
@@ -113,5 +145,16 @@ const payload = {
   routes
 };
 
+const litePayload = {
+  schema: 1,
+  generatedAt: payload.generatedAt,
+  source: `${payload.source}; lightweight startup subset`,
+  counts: { totalNodes: nodes.length, totalRoutes: routes.length, includedNodes: liteNodes.length, includedRoutes: liteRoutes.length },
+  nodes: liteNodes,
+  routes: liteRoutes
+};
+
 await writeFile(path.join(outDir, 'live-globe.json'), JSON.stringify(payload));
+await writeFile(path.join(outDir, 'live-globe-lite.json'), JSON.stringify(litePayload));
 console.log(`[cache] wrote ${nodes.length} nodes and ${routes.length} routes`);
+console.log(`[cache] wrote lite cache with ${liteNodes.length} nodes and ${liteRoutes.length} routes`);
