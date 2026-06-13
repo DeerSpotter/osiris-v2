@@ -492,16 +492,16 @@ button {
 .signal-stack i {
   display: block;
   width: 6px;
-  height: calc(8px + var(--i, 0) * 6px);
+  height: 12px;
   background: var(--cyan);
   opacity: .36;
 }
 
-.signal-stack i:nth-child(1) { --i: 1; }
-.signal-stack i:nth-child(2) { --i: 2; }
-.signal-stack i:nth-child(3) { --i: 3; }
-.signal-stack i:nth-child(4) { --i: 4; }
-.signal-stack i:nth-child(5) { --i: 5; background: var(--gold); }
+.signal-stack i:nth-child(1) { height: 12px; }
+.signal-stack i:nth-child(2) { height: 18px; }
+.signal-stack i:nth-child(3) { height: 24px; }
+.signal-stack i:nth-child(4) { height: 30px; }
+.signal-stack i:nth-child(5) { height: 36px; background: var(--gold); }
 
 .bottom-console {
   position: absolute;
