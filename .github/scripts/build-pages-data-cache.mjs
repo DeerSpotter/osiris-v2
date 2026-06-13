@@ -4,7 +4,7 @@ import path from 'node:path';
 const outDir = path.join(process.cwd(), 'docs', 'data');
 await mkdir(outDir, { recursive: true });
 
-const UA = 'osiris-v2-pages-cache/1.1 (+https://github.com/DeerSpotter/osiris-v2)';
+const UA = 'osiris-v2-pages-cache/1.2 (+https://github.com/DeerSpotter/osiris-v2)';
 const OSIRIS = 'https://osirisai.live';
 
 async function fetchJson(url, fallback = null) {
@@ -129,11 +129,11 @@ const liteNodes = spatialSample(nodes, 420, 5).map((n) => ({
   ...n,
   label: n.priority ? n.label : ''
 }));
-const liteRoutes = routes.slice(0, 260).map((r) => ({
+const liteRoutes = routes.map((r) => ({
   ...r,
-  width: 0.65,
-  alpha: 0.30,
-  coordinates: resample(r.coordinates, 32)
+  width: 0.68,
+  alpha: 0.32,
+  coordinates: resample(r.coordinates, 28)
 })).filter((r) => r.coordinates.length > 1);
 
 const payload = {
@@ -148,7 +148,7 @@ const payload = {
 const litePayload = {
   schema: 1,
   generatedAt: payload.generatedAt,
-  source: `${payload.source}; lightweight startup subset`,
+  source: `${payload.source}; lightweight startup subset with full cable mesh`,
   counts: { totalNodes: nodes.length, totalRoutes: routes.length, includedNodes: liteNodes.length, includedRoutes: liteRoutes.length },
   nodes: liteNodes,
   routes: liteRoutes
