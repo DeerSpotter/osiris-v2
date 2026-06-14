@@ -58,7 +58,9 @@ export function installOsirisMapRegistry() {
 export function subscribeOsirisMap(listener: MapListener) {
   listeners.add(listener);
   listener(activeMap);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getOsirisMap() {
