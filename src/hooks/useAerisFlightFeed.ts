@@ -22,7 +22,10 @@ export type AerisFlightData = {
   military_flights: OsirisFlight[];
   gps_jamming?: any[];
   total?: number;
+  rendered_total?: number;
   timestamp?: string;
+  source?: string;
+  regions?: Array<{ id: string; provider: string | null; count: number; error: string | null }>;
 };
 
 type AerisFlightFeedState = {
@@ -41,6 +44,7 @@ const EMPTY_FLIGHT_DATA: AerisFlightData = {
   military_flights: [],
   gps_jamming: [],
   total: 0,
+  rendered_total: 0,
 };
 
 function normalizePayload(payload: Partial<AerisFlightData>): AerisFlightData {
@@ -51,7 +55,10 @@ function normalizePayload(payload: Partial<AerisFlightData>): AerisFlightData {
     military_flights: Array.isArray(payload.military_flights) ? payload.military_flights : [],
     gps_jamming: Array.isArray(payload.gps_jamming) ? payload.gps_jamming : [],
     total: typeof payload.total === 'number' ? payload.total : undefined,
+    rendered_total: typeof payload.rendered_total === 'number' ? payload.rendered_total : undefined,
     timestamp: payload.timestamp,
+    source: payload.source,
+    regions: Array.isArray(payload.regions) ? payload.regions : undefined,
   };
 }
 
@@ -62,6 +69,16 @@ function countFlights(data: AerisFlightData): number {
     data.private_jets.length +
     data.military_flights.length
   );
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  try {
+    const payload = await response.json();
+    if (payload?.error) return String(payload.error);
+  } catch {
+    // Fall through to status text below.
+  }
+  return response.statusText || `HTTP ${response.status}`;
 }
 
 export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
@@ -99,7 +116,7 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
         });
 
         if (!response.ok) {
-          throw new Error(`Flight feed returned ${response.status}`);
+          throw new Error(`Flight feed ${response.status}: ${await readErrorMessage(response)}`);
         }
 
         const payload = normalizePayload(await response.json());
@@ -139,7 +156,7 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
     loading,
     error,
     lastUpdated,
-    source: '/api/flights',
+    source: data.source ?? '/api/flights',
     total,
   };
 }
