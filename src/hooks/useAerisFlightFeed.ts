@@ -71,6 +71,10 @@ const EMPTY_FLIGHT_DATA: AerisFlightData = {
   rendered_total: 0,
 };
 
+const OSIRIS_FLIGHT_PROXY_URL = (
+  process.env.NEXT_PUBLIC_OSIRIS_FLIGHT_PROXY_URL || 'https://osiris-v2.spotterdeer.workers.dev'
+).replace(/\/$/, '');
+
 const DIRECT_PROVIDER_ORDER = [
   { id: 'airplanes.live', baseUrl: 'https://api.airplanes.live/v2' },
   { id: 'adsb.lol', baseUrl: 'https://api.adsb.lol/v2' },
@@ -270,31 +274,55 @@ async function fetchDirectPagesFallback(signal: AbortSignal): Promise<AerisFligh
   };
 }
 
+async function fetchWorkerProxyFeed(signal: AbortSignal): Promise<AerisFlightData> {
+  const response = await fetch(`${OSIRIS_FLIGHT_PROXY_URL}/flights`, {
+    cache: 'no-store',
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Worker feed ${response.status}: ${await readErrorMessage(response)}`);
+  }
+
+  return normalizePayload(await response.json());
+}
+
+async function fetchNextRouteFeed(signal: AbortSignal): Promise<AerisFlightData> {
+  const response = await fetch('/api/flights', {
+    cache: 'no-store',
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Flight feed ${response.status}: ${await readErrorMessage(response)}`);
+  }
+
+  return normalizePayload(await response.json());
+}
+
 async function fetchFlightFeed(signal: AbortSignal): Promise<AerisFlightData> {
+  const errors: string[] = [];
+
   try {
-    const response = await fetch('/api/flights', {
-      cache: 'no-store',
-      signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Flight feed ${response.status}: ${await readErrorMessage(response)}`);
-    }
-
-    return normalizePayload(await response.json());
+    return await fetchWorkerProxyFeed(signal);
   } catch (error) {
     if (signal.aborted) throw error;
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
 
-    // GitHub Pages cannot execute Next API routes. When /api/flights 404s on a
-    // static deployment, fall back to the same public readsb providers directly
-    // from the browser. This keeps the live aviation layer working on Pages.
-    try {
-      return await fetchDirectPagesFallback(signal);
-    } catch (fallbackError) {
-      const primary = error instanceof Error ? error.message : 'Flight feed failed';
-      const fallback = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      throw new Error(`${primary}; direct fallback failed: ${fallback}`);
-    }
+  try {
+    return await fetchNextRouteFeed(signal);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  try {
+    return await fetchDirectPagesFallback(signal);
+  } catch (error) {
+    const direct = error instanceof Error ? error.message : String(error);
+    throw new Error(`${errors.join('; ')}; direct fallback failed: ${direct}`);
   }
 }
 
@@ -364,7 +392,7 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
     loading,
     error,
     lastUpdated,
-    source: data.source ?? '/api/flights',
+    source: data.source ?? OSIRIS_FLIGHT_PROXY_URL,
     total,
   };
 }
