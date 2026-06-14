@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#d4af37">
   <title>OSIRIS — Global Map Command</title>
-  <meta name="description" content="OSIRIS interactive globe for GitHub Pages.">
+  <meta name="description" content="OSIRIS interactive global map for GitHub Pages.">
   <meta name="github-pages-fallback" content="root index.html redirects to docs for branch based Pages deployments.">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <link rel="stylesheet" href="./styles.css?v=20260614-clean-map-controller">
+  <style id="osirisNoLegacyGlobe">
+    /* The legacy canvas globe is kept only because osiris-live-cache.js owns the data model.
+       Do not show it during startup or map failure. */
+    #globeCanvas.globe-canvas{display:none!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;}
+  </style>
 </head>
 <body>
   <div class="boot" id="boot" aria-live="polite">
@@ -17,8 +22,8 @@
     <div class="boot-sequence" id="bootSequence">INITIALIZING GLOBAL MAP...</div>
   </div>
 
-  <main class="osiris-live" aria-label="OSIRIS interactive globe">
-    <canvas id="globeCanvas" class="globe-canvas" aria-label="Interactive 3D OSIRIS world map"></canvas>
+  <main class="osiris-live" aria-label="OSIRIS interactive global map">
+    <canvas id="globeCanvas" class="globe-canvas" aria-hidden="true"></canvas>
     <div class="space-vignette" aria-hidden="true"></div>
     <div class="scan-lines" aria-hidden="true"></div>
 
@@ -41,10 +46,10 @@
     <section class="event-card" aria-label="Selected event">
       <span class="event-kicker">RECON LAYER</span>
       <strong id="eventTitle">CONNECTING TO REPO DATA CACHE</strong>
-      <span id="eventMeta">DRAG TO ORBIT · PINCH OR WHEEL TO ZOOM</span>
+      <span id="eventMeta">PINCH OR WHEEL TO ZOOM · TAP A NODE</span>
     </section>
 
-    <div class="floating-actions" aria-label="Globe controls">
+    <div class="floating-actions" aria-label="Map controls">
       <button type="button" id="locateBtn" aria-label="Focus North America"><span class="pin-icon"></span></button>
       <button type="button" id="orbitBtn" aria-label="Toggle repository routes"><span class="orbit-icon"></span></button>
     </div>
@@ -63,6 +68,6 @@
   <script src="./osiris-panel-selection.js?v=20260614-fast-map-rollback"></script>
   <script src="./osiris-map-controller.js?v=20260614-fast-detailed-zoom"></script>
   <script src="./osiris-satellite-toggle.js?v=20260614-satellite-toggle"></script>
-  <script src="./osiris-projection-toggle.js?v=20260614-globe-overlay"></script>
+  <script src="./osiris-projection-toggle.js?v=20260614-isolated-globe-frame"></script>
 </body>
 </html>
