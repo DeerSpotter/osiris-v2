@@ -87,8 +87,13 @@
       .projection-toggle{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:calc(max(14px,env(safe-area-inset-bottom)) + 140px);z-index:521;width:52px;height:52px;border:1px solid rgba(215,183,57,.42);border-radius:18px;background:rgba(5,7,17,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#f5d96b;box-shadow:0 12px 34px rgba(0,0,0,.46),inset 0 0 18px rgba(215,183,57,.08);font:900 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.13em;display:grid;place-items:center;touch-action:manipulation;}
       .projection-toggle.active{background:rgba(215,183,57,.24);border-color:rgba(245,217,107,.88);color:#fff;text-shadow:0 0 10px rgba(245,217,107,.76);}
       .projection-toggle:active{transform:scale(.96);}
+      body.osiris-primary-map .event-card{left:calc(max(14px,env(safe-area-inset-left)) + 72px);bottom:calc(max(14px,env(safe-area-inset-bottom)) + 140px);width:min(360px,calc(100vw - 108px));padding-right:58px;z-index:520;}
+      .event-focus-button{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:1px solid rgba(245,217,107,.46);border-radius:14px;background:rgba(5,7,17,.78);color:#f5d96b;display:grid;place-items:center;font:900 20px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0;box-shadow:0 10px 24px rgba(0,0,0,.42),inset 0 0 18px rgba(215,183,57,.08);cursor:pointer;touch-action:manipulation;}
+      .event-focus-button:hover,.event-focus-button:focus-visible{border-color:rgba(245,217,107,.9);color:#fff;outline:none;text-shadow:0 0 10px rgba(245,217,107,.76);}
+      .event-focus-button:active{transform:translateY(-50%) scale(.96);}
+      .event-focus-button[hidden]{display:none!important;}
       .panel-deck,.layer-drawer{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
-      @media(max-width:760px){.projection-toggle{left:max(12px,env(safe-area-inset-left));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 132px);width:48px;height:48px;border-radius:16px;}}
+      @media(max-width:760px){.projection-toggle{left:max(12px,env(safe-area-inset-left));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 132px);width:48px;height:48px;border-radius:16px;}body.osiris-primary-map .event-card{left:calc(max(12px,env(safe-area-inset-left)) + 66px);bottom:calc(max(10px,env(safe-area-inset-bottom)) + 132px);width:min(330px,calc(100vw - 96px));}}
     `;
     document.head.appendChild(style);
   }
@@ -131,6 +136,35 @@
     button.addEventListener('click', () => setProjection(state.projection === 'globe' ? 'mercator' : 'globe'), { passive: true });
     update();
     return update;
+  }
+
+  function ensureFocusButton() {
+    const card = document.querySelector('.event-card');
+    if (!card) return null;
+    let button = card.querySelector('.event-focus-button');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'event-focus-button';
+      button.title = 'Center and zoom to this node';
+      button.setAttribute('aria-label', 'Center and zoom to selected node');
+      button.textContent = '⌖';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (state.selectedNode) focusNodeOnMap(state.selectedNode, zoomForNode(state.selectedNode));
+      }, { passive: false });
+      card.appendChild(button);
+    }
+    const hasNode = !!state.selectedNode;
+    button.hidden = !hasNode;
+    card.classList.toggle('has-focus-action', hasNode);
+    return button;
+  }
+
+  function setSelectedNode(node) {
+    state.selectedNode = node || null;
+    ensureFocusButton();
   }
 
   function loadCss(href) {
@@ -207,13 +241,26 @@
     return `rgb(${parts[0]},${parts[1]},${parts[2]})`;
   }
 
+  function shouldHideRoute(route) {
+    const q = new URLSearchParams(location.search);
+    if (q.get('debugRoutes') === '1') return false;
+    const layer = String(route?.layer || '').toLowerCase();
+    const source = String(route?.source || route?.label || '').toLowerCase();
+    const isSeaRoute = /sdk_sea|maritime|cables?/.test(layer) || /ship|sea|maritime|cable/.test(source);
+    const zoom = state.map?.getZoom?.() ?? DEFAULT_VIEW.zoom;
+    return isSeaRoute && zoom < 5.4;
+  }
+
   function visibleRouteFeatures() {
     const routes = Array.isArray(model.visibleRoutes) ? model.visibleRoutes : [];
-    return routes.map((r, i) => ({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: (r.coordinates || []).map((p) => [Number(p[0]), Number(p[1])]).filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat)) },
-      properties: { id: i, layer: r.layer || 'sdk_sea', color: colorForNode({ tone: layerTone[r.layer] || 'blue' }), alpha: Number(r.alpha) || 0.35 }
-    })).filter((f) => f.geometry.coordinates.length > 1);
+    return routes.map((r, i) => {
+      if (shouldHideRoute(r)) return null;
+      return {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: (r.coordinates || []).map((p) => [Number(p[0]), Number(p[1])]).filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat)) },
+        properties: { id: i, layer: r.layer || 'sdk_sea', color: colorForNode({ tone: layerTone[r.layer] || 'blue' }), alpha: Number(r.alpha) || 0.35 }
+      };
+    }).filter((f) => f && f.geometry.coordinates.length > 1);
   }
 
   function visibleNodeFeatures() {
@@ -258,8 +305,8 @@
     addSourceSafe(map, ROUTE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     addSourceSafe(map, DATA_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     const before = firstLabelLayer(map);
-    addLayerSafe(map, { id: 'osiris-cables-line', type: 'line', source: CABLE_SOURCE, paint: { 'line-color': '#1689d6', 'line-opacity': ['case', ['any', ['boolean', ['literal', !!model.activeLayers?.sdk_sea], false], ['boolean', ['literal', !!model.activeLayers?.cables], false]], ['interpolate', ['linear'], ['zoom'], 1, 0.16, 6, 0.36, 13, 0.66], 0], 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.25, 7, 1.0, 13, 2.1] } }, before);
-    addLayerSafe(map, { id: 'osiris-routes-line', type: 'line', source: ROUTE_SOURCE, paint: { 'line-color': ['coalesce', ['get', 'color'], '#1689d6'], 'line-opacity': ['interpolate', ['linear'], ['zoom'], 1, 0.16, 8, 0.42, 14, 0.66], 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.28, 8, 1.1, 14, 2.4] } }, before);
+    addLayerSafe(map, { id: 'osiris-cables-line', type: 'line', source: CABLE_SOURCE, minzoom: 3.6, paint: { 'line-color': '#1689d6', 'line-opacity': ['case', ['any', ['boolean', ['literal', !!model.activeLayers?.sdk_sea], false], ['boolean', ['literal', !!model.activeLayers?.cables], false]], ['interpolate', ['linear'], ['zoom'], 3.6, 0.0, 5, 0.18, 8, 0.36, 13, 0.66], 0], 'line-width': ['interpolate', ['linear'], ['zoom'], 3.6, 0.15, 7, 1.0, 13, 2.1] } }, before);
+    addLayerSafe(map, { id: 'osiris-routes-line', type: 'line', source: ROUTE_SOURCE, minzoom: 5.4, paint: { 'line-color': ['coalesce', ['get', 'color'], '#1689d6'], 'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.4, 0.0, 6.5, 0.22, 10, 0.42, 14, 0.66], 'line-width': ['interpolate', ['linear'], ['zoom'], 5.4, 0.18, 8, 1.1, 14, 2.4] } }, before);
     addLayerSafe(map, { id: 'osiris-node-halo', type: 'circle', source: DATA_SOURCE, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 5, 8, 12, 14, 20, 19, 32], 'circle-color': ['get', 'color'], 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 1, 0.16, 10, 0.30, 18, 0.42], 'circle-blur': 0.7 } });
     addLayerSafe(map, { id: 'osiris-nodes', type: 'circle', source: DATA_SOURCE, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 2.8, 8, 5.5, 14, 8.5, 19, 12], 'circle-color': ['get', 'color'], 'circle-stroke-color': '#05070f', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 1, 1.2, 12, 2.0], 'circle-opacity': 0.96 } });
     addLayerSafe(map, { id: 'osiris-node-labels', type: 'symbol', source: DATA_SOURCE, minzoom: 6.5, layout: { 'text-field': ['get', 'label'], 'text-size': ['interpolate', ['linear'], ['zoom'], 6.5, 10, 14, 13, 19, 16], 'text-offset': [0, 1.25], 'text-anchor': 'top', 'text-allow-overlap': false, 'text-ignore-placement': false }, paint: { 'text-color': '#f5d96b', 'text-halo-color': '#02030a', 'text-halo-width': 1.8, 'text-opacity': ['interpolate', ['linear'], ['zoom'], 6.5, 0.0, 9, 0.85, 14, 1.0] } });
@@ -286,6 +333,7 @@
     state.ready = true;
     document.body.classList.add('osiris-map-ready');
     setStatus('MAPLIBRE GLOBE READY', 'PINCH TO ZOOM · PAN MAP · TAP NODES FOR DETAIL', state.projection === 'globe' ? 'GLOBE' : 'MAP READY');
+    ensureFocusButton();
     setTimeout(() => state.map?.resize(), 60);
   }
 
@@ -311,6 +359,10 @@
     });
   }
 
+  function zoomForNode(node) {
+    return /cctv|live_news/i.test(node?.layer || '') ? 17.5 : 14.5;
+  }
+
   function focusNodeOnMap(node, zoom = 15.5) {
     if (!state.map || !node) return;
     state.selectedNode = node;
@@ -329,7 +381,7 @@
     const originalSelectNode = selectNode;
     selectNode = function osirisMapControllerSelectNode(node) {
       const result = originalSelectNode.call(this, node);
-      if (node) focusNodeOnMap(node, /cctv|live_news/i.test(node.layer || '') ? 17.5 : 14.5);
+      setSelectedNode(node);
       return result;
     };
 
@@ -342,7 +394,7 @@
     document.querySelectorAll('.bottom-nav button').forEach((button) => {
       button.addEventListener('click', () => {
         model.selected = null;
-        state.selectedNode = null;
+        setSelectedNode(null);
         setTimeout(syncMapData, 60);
       }, { capture: true });
     });
@@ -360,6 +412,8 @@
       model.view.zoom = clamp(map.getZoom(), 0, 20);
       const readout = document.getElementById('readout');
       if (readout) readout.textContent = `${state.projection === 'globe' ? 'GLOBE' : 'MAP'} · ${activeLayerKeys().length} LAYERS · Z ${map.getZoom().toFixed(2)}`;
+      clearTimeout(state.syncTimer);
+      state.syncTimer = setTimeout(syncMapData, 90);
     });
     map.on('click', 'osiris-nodes', (event) => {
       const feature = event.features?.[0];
@@ -448,6 +502,7 @@
     try { map.dragRotate.disable(); } catch {}
     try { map.touchPitch.disable(); } catch {}
     injectProjectionToggle();
+    ensureFocusButton();
     bindMapEvents(map);
     return map;
   }
