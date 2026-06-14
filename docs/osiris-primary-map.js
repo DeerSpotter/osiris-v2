@@ -42,6 +42,18 @@
     if (button && !button.classList.contains('active')) button.click();
   }
 
+  function copyMapCameraToModel(map) {
+    if (typeof model === 'undefined' || !map) return;
+    try {
+      const center = map.getCenter();
+      model.view.targetLon = ((center.lng + 540) % 360) - 180;
+      model.view.lon = model.view.targetLon;
+      model.view.targetLat = clamp(center.lat, -85, 85);
+      model.view.lat = model.view.targetLat;
+      model.view.zoom = clamp(map.getZoom(), 1, 20);
+    } catch {}
+  }
+
   function configureMap(map, view) {
     if (!map || map.__osirisPrimaryMap) return;
     map.__osirisPrimaryMap = true;
@@ -60,6 +72,7 @@
       try {
         map.jumpTo({ center: [view.lon, view.lat], zoom: view.zoom, pitch: 0, bearing: 0 });
         map.resize();
+        copyMapCameraToModel(map);
       } catch {}
       const eventMeta = document.getElementById('eventMeta');
       if (eventMeta) eventMeta.textContent = 'PINCH TO ZOOM · PAN MAP · TAP NODES FOR DETAIL';
@@ -70,15 +83,9 @@
     if (map.loaded?.()) apply();
     else map.once?.('load', apply);
 
-    map.on?.('move', () => {
-      if (typeof model === 'undefined') return;
-      try {
-        const center = map.getCenter();
-        model.view.targetLon = ((center.lng + 540) % 360) - 180;
-        model.view.targetLat = clamp(center.lat, -85, 85);
-        model.view.zoom = map.getZoom();
-      } catch {}
-    });
+    map.on?.('move', () => copyMapCameraToModel(map));
+    map.on?.('moveend', () => setTimeout(() => copyMapCameraToModel(map), 0));
+    map.on?.('zoomend', () => setTimeout(() => copyMapCameraToModel(map), 0));
   }
 
   function waitForMap(view) {
