@@ -1,6 +1,7 @@
 (() => {
-  const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
-  const MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
+  const MAPLIBRE_VERSION = '5.24.0';
+  const MAPLIBRE_CSS = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
+  const MAPLIBRE_JS = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
   const CARTO_DARK_MATTER = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
   const DEFAULT_VIEW = { lat: 40.4168, lon: 0, zoom: 6.03 };
   const MAP_LAYER_ID = 'realMapLayer';
@@ -414,6 +415,7 @@
     });
     state.map = map;
     window.__osirisRealMap = map;
+    window.__osirisMapLibreVersion = MAPLIBRE_VERSION;
     try { map.dragPan.enable(); } catch {}
     try { map.scrollZoom.enable(); } catch {}
     try { map.touchZoomRotate.enable(); } catch {}
@@ -432,7 +434,7 @@
     const view = parseView();
     setMapViewFromUrl(view);
     patchCoreFunctions();
-    setStatus('LOADING LIVE MAP', 'CONNECTING MAPLIBRE · CARTO STYLE · OSIRIS LAYERS', 'LOADING');
+    setStatus('LOADING LIVE MAP', `CONNECTING MAPLIBRE ${MAPLIBRE_VERSION} · CARTO STYLE · OSIRIS LAYERS`, 'LOADING');
     try {
       await createMap(view);
     } catch (error) {
