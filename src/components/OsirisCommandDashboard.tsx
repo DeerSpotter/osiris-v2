@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Activity, Database, Globe2, Layers, MapPinned, Moon, Radar, Satellite } from 'lucide-react';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { useAerisFlightFeed } from '@/hooks/useAerisFlightFeed';
 
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
 const GlbMapCanvas = dynamic(() => import('@/components/map-surfaces/GlbMapCanvas'), { ssr: false });
@@ -18,6 +19,11 @@ type OsirisCommandDashboardProps = {
 const satelliteStyle = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
 const layerOrder = [
+  ['flights', 'Live flights'],
+  ['private', 'Private aircraft'],
+  ['jets', 'Business jets'],
+  ['military', 'Military aircraft'],
+  ['gps_jamming', 'GPS anomalies'],
   ['maritime', 'Maritime mesh'],
   ['cctv', 'CCTV nodes'],
   ['live_news', 'Live news'],
@@ -32,6 +38,11 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
   const [mapMode, setMapMode] = useState<CommandMapMode>('glb');
   const [mapStyle, setMapStyle] = useState<CommandMapStyle>('dark');
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
+    flights: true,
+    private: true,
+    jets: true,
+    military: true,
+    gps_jamming: true,
     maritime: true,
     cctv: true,
     live_news: true,
@@ -42,9 +53,15 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
     sdk_sea: true,
   });
 
+  const flightLayerEnabled = Boolean(activeLayers.flights || activeLayers.private || activeLayers.jets || activeLayers.military);
+  const flightFeed = useAerisFlightFeed(flightLayerEnabled);
   const activeCount = useMemo(() => Object.values(activeLayers).filter(Boolean).length, [activeLayers]);
-  const data = useMemo(() => ({}), []);
+  const data = useMemo(() => flightFeed.data, [flightFeed.data]);
   const projection = mapMode === 'mercator' ? 'mercator' : 'globe';
+  const flightStatus = flightFeed.error ? 'Feed error' : flightFeed.loading ? 'Updating' : 'Live';
+  const flightUpdated = flightFeed.lastUpdated
+    ? new Date(flightFeed.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'pending';
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#02040a] text-[#e8e6e0]">
@@ -78,6 +95,7 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
         <div className="hidden items-center gap-4 font-mono text-[10px] uppercase tracking-[0.22em] text-[#8fb8c8] md:flex">
           <span>Mode: <b className="text-[#d4af37]">{mapMode.toUpperCase()}</b></span>
           <span>Feeds: <b className="text-[#00e5ff]">{activeCount}</b></span>
+          <span>Flights: <b className="text-[#00e676]">{flightFeed.total}</b></span>
           <span className="text-[#00e676]">Stable entry</span>
         </div>
       </header>
@@ -102,17 +120,22 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
 
       <aside className="absolute right-4 top-24 z-[220] w-[305px] rounded-xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-xl max-lg:hidden">
         <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.26em] text-[#d4af37]">
-          <Database size={14} /> Fixed load path
+          <Database size={14} /> Aeris flight feed
         </div>
         <p className="text-xs leading-5 text-[#b9cbd1]">
-          OSIRIS now starts on the stable GLB tactical surface instead of the old heavy global MapLibre load path. The 2D, globe, and satellite engines are still available from the bottom control stack.
+          OSIRIS now feeds the existing MapLibre aircraft layers from the live ADS-B endpoint. Aeris remains staged under <span className="font-mono text-[#00e5ff]">src/aeris</span> as the deeper Deck.gl reference module.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-[#8fb8c8]">
-          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">No IP fly-to</span>
-          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">No API preload</span>
-          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Stable shell</span>
-          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">GLB default</span>
+          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Status: <b className={flightFeed.error ? 'text-[#ff3d3d]' : 'text-[#00e676]'}>{flightStatus}</b></span>
+          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Updated: <b className="text-[#d4af37]">{flightUpdated}</b></span>
+          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Aircraft: <b className="text-[#00e5ff]">{flightFeed.total}</b></span>
+          <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Source: <b className="text-[#d4af37]">ADS-B</b></span>
         </div>
+        {flightFeed.error && (
+          <p className="mt-3 rounded border border-[#ff3d3d]/30 bg-[#ff3d3d]/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#ff9a9a]">
+            {flightFeed.error}
+          </p>
+        )}
       </aside>
 
       <nav className="absolute bottom-[75px] left-3 z-[230] flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 p-2 backdrop-blur-xl md:bottom-6 md:left-[315px]">
