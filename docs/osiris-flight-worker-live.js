@@ -8,7 +8,18 @@
   const MIN_REFRESH_MS = 10_000;
   const MAX_BACKOFF_MS = 120_000;
   const LOCAL_DIST_NM = 250;
+  const FALLBACK_COOLDOWN_MS = 60_000;
   const AIR_LAYER_KEYS = ['flights', 'private', 'jets', 'military'];
+  const FALLBACK_REGIONS = [
+    { name: 'NORTHEAST', lat: 40.3, lon: -75.0, dist: 300 },
+    { name: 'ATLANTA', lat: 33.65, lon: -84.42, dist: 300 },
+    { name: 'CHICAGO', lat: 41.88, lon: -87.63, dist: 300 },
+    { name: 'DALLAS', lat: 32.78, lon: -97.04, dist: 300 },
+    { name: 'LOS ANGELES', lat: 34.05, lon: -118.25, dist: 300 },
+    { name: 'SEATTLE', lat: 47.61, lon: -122.33, dist: 300 },
+    { name: 'LONDON', lat: 51.47, lon: -0.45, dist: 300 },
+    { name: 'FRANKFURT', lat: 50.04, lon: 8.57, dist: 300 }
+  ];
 
   let timer = 0;
   let inFlight = false;
@@ -16,6 +27,8 @@
   let failureCount = 0;
   let sequence = 0;
   let lastQueryKey = '';
+  let lastFallbackAt = 0;
+  let lastCenterKey = '';
 
   function activeAeris() {
     return document.body.classList.contains('osiris-aeris-mode');
@@ -43,22 +56,35 @@
     return groups.commercial_flights.length + groups.private_flights.length + groups.private_jets.length + groups.military_flights.length;
   }
 
-  function flightKey(flight) {
-    return String(flight?.icao24 || flight?.hex || flight?.registration || `${flight?.callsign || ''}:${flight?.lat}:${flight?.lng ?? flight?.lon}`).toLowerCase();
+  function feedQueryFor(lat, lon, dist = LOCAL_DIST_NM) {
+    const qLat = Math.max(-85, Math.min(85, Number(lat))).toFixed(3);
+    const qLon = ((((Number(lon) + 540) % 360) - 180)).toFixed(3);
+    return `lat=${qLat}&lon=${qLon}&dist=${dist}`;
   }
 
   function buildLocalQuery() {
     const center = map()?.getCenter?.();
     if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return '';
-    const lat = Math.max(-85, Math.min(85, Number(center.lat))).toFixed(3);
-    const lon = ((((Number(center.lng) + 540) % 360) - 180)).toFixed(3);
-    return `lat=${lat}&lon=${lon}&dist=${LOCAL_DIST_NM}`;
+    return feedQueryFor(center.lat, center.lng, LOCAL_DIST_NM);
   }
 
-  function feedUrl() {
-    const query = activeAeris() ? buildLocalQuery() : '';
-    lastQueryKey = query || 'global';
-    return query ? `${FLIGHT_PROXY_URL}/flights?${query}` : `${FLIGHT_PROXY_URL}/flights`;
+  function regionDistance(region, center) {
+    if (!center) return 0;
+    const dLat = Number(center.lat) - region.lat;
+    const dLon = Number(center.lng) - region.lon;
+    return dLat * dLat + dLon * dLon;
+  }
+
+  function nearestFallbackQuery() {
+    const center = map()?.getCenter?.();
+    const region = [...FALLBACK_REGIONS].sort((a, b) => regionDistance(a, center) - regionDistance(b, center))[0] || FALLBACK_REGIONS[0];
+    return { query: feedQueryFor(region.lat, region.lon, region.dist), name: region.name };
+  }
+
+  function feedUrl(query = null) {
+    const q = query ?? (activeAeris() ? buildLocalQuery() : '');
+    lastQueryKey = q || 'global';
+    return q ? `${FLIGHT_PROXY_URL}/flights?${q}` : `${FLIGHT_PROXY_URL}/flights`;
   }
 
   function nextDelay() {
@@ -87,6 +113,28 @@
     } finally {
       window.clearTimeout(timeout);
     }
+  }
+
+  async function fetchFlightFeed() {
+    const primaryQuery = activeAeris() ? buildLocalQuery() : '';
+    const primaryUrl = feedUrl(primaryQuery);
+    const primary = await fetchJson(primaryUrl, activeAeris() ? 12_000 : 14_000);
+    if (!activeAeris() || groupedTotal(primary) > 0) return { data: primary, requestUrl: primaryUrl, queryKey: lastQueryKey };
+
+    const now = Date.now();
+    const fallback = nearestFallbackQuery();
+    const allowFallback = now - lastFallbackAt > FALLBACK_COOLDOWN_MS || lastCenterKey !== primaryQuery;
+    if (!allowFallback || fallback.query === primaryQuery) return { data: primary, requestUrl: primaryUrl, queryKey: lastQueryKey };
+
+    lastFallbackAt = now;
+    lastCenterKey = primaryQuery;
+    const fallbackUrl = feedUrl(fallback.query);
+    const fallbackData = await fetchJson(fallbackUrl, 12_000);
+    if (groupedTotal(fallbackData) > 0) {
+      fallbackData.source = `${fallbackData.source || 'cloudflare worker'} · fallback ${fallback.name}`;
+      return { data: fallbackData, requestUrl: fallbackUrl, queryKey: fallback.query };
+    }
+    return { data: primary, requestUrl: primaryUrl, queryKey: primaryQuery || 'global' };
   }
 
   function flightLabel(flight) {
@@ -159,7 +207,7 @@
     if (typeof systemState !== 'undefined' && systemState) systemState.textContent = text;
   }
 
-  function publishSnapshot(data, requestUrl) {
+  function publishSnapshot(data, requestUrl, queryKey) {
     const groups = groupedFlights(data);
     const rendered =
       publishLayer('flights', groups.commercial_flights, 'cyan', 'Commercial') +
@@ -182,7 +230,7 @@
       data,
       updatedAt: new Date().toISOString(),
       sequence,
-      queryKey: lastQueryKey,
+      queryKey: queryKey || lastQueryKey,
       requestUrl,
       nextRefreshMs: nextDelay()
     };
@@ -199,11 +247,10 @@
 
     inFlight = true;
     lastRequestAt = now;
-    const url = feedUrl();
     try {
-      const data = await fetchJson(url, activeAeris() ? 12_000 : 14_000);
+      const { data, requestUrl, queryKey } = await fetchFlightFeed();
       failureCount = 0;
-      publishSnapshot(data, url);
+      publishSnapshot(data, requestUrl, queryKey);
     } finally {
       inFlight = false;
     }
@@ -240,6 +287,9 @@
   });
 
   window.addEventListener('osiris:aeris-mode', () => safeRefreshFlights({ force: true }));
+  window.addEventListener('moveend', () => {
+    if (activeAeris()) scheduleNext(Math.max(MIN_REFRESH_MS, 12_000));
+  });
 
   if (document.readyState === 'complete') startFlightFeed();
   else window.addEventListener('load', startFlightFeed, { once: true });
