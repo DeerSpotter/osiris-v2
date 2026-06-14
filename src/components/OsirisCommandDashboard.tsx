@@ -35,7 +35,7 @@ const layerOrder = [
 ] as const;
 
 export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisCommandDashboardProps) {
-  const [mapMode, setMapMode] = useState<CommandMapMode>('glb');
+  const [mapMode, setMapMode] = useState<CommandMapMode>('globe');
   const [mapStyle, setMapStyle] = useState<CommandMapStyle>('dark');
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
     flights: true,
