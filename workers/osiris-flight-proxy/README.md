@@ -29,13 +29,25 @@ Then it returns the same grouped payload shape used by the OSIRIS Next route:
 }
 ```
 
-## Deploy
+## Cloudflare connected Git deploy settings
+
+Use these settings in Cloudflare Workers Builds:
+
+```txt
+Root directory: workers/osiris-flight-proxy
+Build command: 
+Deploy command: npx wrangler deploy
+Production branch: master
+```
+
+Leave the build command blank. There is no package file in this folder on purpose, so Cloudflare skips the automatic `npm ci` dependency install that fails when no lock file exists. The deploy command uses `npx wrangler deploy`.
+
+## Manual deploy
 
 ```bash
 cd workers/osiris-flight-proxy
-npm install
 npx wrangler login
-npm run deploy
+npx wrangler deploy
 ```
 
 After deployment, test:
