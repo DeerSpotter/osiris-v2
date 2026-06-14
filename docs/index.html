@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#d4af37">
   <title>OSIRIS</title>
   <meta name="description" content="Interactive OSIRIS map for GitHub Pages.">
-  <link rel="stylesheet" href="./styles.css?v=20260614-live-mapstyle">
+  <link rel="stylesheet" href="./styles.css?v=20260614-clean-map-controller">
 </head>
 <body>
   <div class="boot" id="boot" aria-live="polite">
@@ -15,8 +15,8 @@
     <div class="boot-sequence" id="bootSequence">INITIALIZING GLOBAL MAP...</div>
   </div>
 
-  <main class="osiris-live" aria-label="OSIRIS interactive globe">
-    <canvas id="globeCanvas" class="globe-canvas" aria-label="Interactive 3D OSIRIS world map"></canvas>
+  <main class="osiris-live" aria-label="OSIRIS interactive map">
+    <canvas id="globeCanvas" class="globe-canvas" aria-label="OSIRIS fallback globe"></canvas>
     <div class="space-vignette" aria-hidden="true"></div>
     <div class="scan-lines" aria-hidden="true"></div>
 
@@ -38,10 +38,10 @@
     <section class="event-card" aria-label="Selected event">
       <span class="event-kicker">RECON LAYER</span>
       <strong id="eventTitle">CONNECTING TO REPO DATA CACHE</strong>
-      <span id="eventMeta">DRAG TO ORBIT · PINCH OR WHEEL TO ZOOM</span>
+      <span id="eventMeta">PINCH TO ZOOM · PAN MAP · TAP NODES FOR DETAIL</span>
     </section>
 
-    <div class="floating-actions" aria-label="Globe controls">
+    <div class="floating-actions" aria-label="Fallback globe controls">
       <button type="button" id="locateBtn" aria-label="Focus North America"><span class="pin-icon"></span></button>
       <button type="button" id="orbitBtn" aria-label="Toggle repository routes"><span class="orbit-icon"></span></button>
     </div>
@@ -55,15 +55,8 @@
     </nav>
   </main>
 
-  <script>window.__OSIRIS_PRIMARY_MAP__ = true;</script>
-  <script src="./osiris-live-cache.js?v=20260613-static-shell"></script>
-  <script src="./osiris-interaction-tuning.js?v=20260614-zoom-labels"></script>
-  <script src="./osiris-panel-selection.js?v=20260614-panel-select"></script>
-  <script src="./osiris-map-controls.js?v=20260614-map-controls"></script>
-  <script src="./osiris-street-map-fix.js?v=20260614-primary-map"></script>
-  <script src="./osiris-pan-fix.js?v=20260614-pan-fix"></script>
-  <script src="./osiris-primary-map.js?v=20260614-primary-map"></script>
-  <script src="./osiris-map-visibility-fix.js?v=20260614-map-load-guard"></script>
-  <script src="./osiris-live-mapstyle-fix.js?v=20260614-live-mapstyle"></script>
+  <script src="./osiris-live-cache.js?v=20260614-clean-map-controller"></script>
+  <script src="./osiris-panel-selection.js?v=20260614-clean-map-controller"></script>
+  <script src="./osiris-map-controller.js?v=20260614-clean-map-controller"></script>
 </body>
 </html>
