@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Opening OSIRIS</title>
+  <script>
+    (function () {
+      var path = window.location.pathname || '';
+      var repoBase = '/osiris-v2/';
+      var target;
+      if (path.indexOf(repoBase) === 0) target = repoBase + 'docs/';
+      else target = repoBase + 'docs/';
+      window.location.replace(target + window.location.search + window.location.hash);
+    })();
+  </script>
+</head>
+<body>
+  <p>Opening OSIRIS…</p>
+  <p><a href="/osiris-v2/docs/">Open OSIRIS</a></p>
+</body>
+</html>
