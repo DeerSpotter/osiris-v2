@@ -1,6 +1,7 @@
 (() => {
   const MAX_WAIT_MS = 12000;
   const startedAt = Date.now();
+  const ORBIT_ZOOM_MAX = 11;
 
   function setStatus(text) {
     const readout = document.getElementById('readout');
@@ -9,47 +10,70 @@
     readout.textContent = `${text} · Z ${Number.isFinite(zoom) ? zoom.toFixed(2) : '--'}`;
   }
 
-  function trySetGlobe(map) {
-    if (!map || map.__osirisGlobeProjectionApplied) return;
-    map.__osirisGlobeProjectionApplied = true;
-
-    let globeApplied = false;
+  function projectionType(map) {
     try {
-      map.setProjection?.({ type: 'globe' });
-      globeApplied = true;
+      const projection = map.getProjection?.();
+      return typeof projection === 'string' ? projection : projection?.type;
     } catch {
+      return '';
+    }
+  }
+
+  function applyGlobe(map) {
+    let ok = false;
+    try {
+      map.setProjection?.('globe');
+      ok = projectionType(map) === 'globe' || !projectionType(map);
+    } catch {}
+    if (!ok) {
       try {
-        map.setProjection?.('globe');
-        globeApplied = true;
+        map.setProjection?.({ type: 'globe' });
+        ok = projectionType(map) === 'globe' || !projectionType(map);
       } catch {}
     }
+    return ok;
+  }
 
-    try { map.setRenderWorldCopies?.(false); } catch {}
-    try { map.setPitch?.(0); } catch {}
-    try { map.dragRotate?.disable(); } catch {}
-    try { map.touchPitch?.disable(); } catch {}
+  function trySetGlobe(map) {
+    if (!map) return;
+    if (map.__osirisGlobeProjectionInstalled) return;
+    map.__osirisGlobeProjectionInstalled = true;
 
-    document.body.classList.toggle('osiris-globe-projection', globeApplied);
-    document.body.classList.toggle('osiris-mercator-map', !globeApplied);
-    setStatus(globeApplied ? 'GLOBE MAP READY' : 'MAP READY');
+    const forceGlobe = () => {
+      const ok = applyGlobe(map);
+      try { map.setRenderWorldCopies?.(false); } catch {}
+      try { map.setPitch?.(0); } catch {}
+      try { map.dragRotate?.disable(); } catch {}
+      try { map.touchPitch?.disable(); } catch {}
+      document.body.classList.toggle('osiris-globe-projection', ok);
+      document.body.classList.toggle('osiris-mercator-map', !ok);
+      const z = map.getZoom?.() || 0;
+      document.body.classList.toggle('osiris-street-zoom', z >= ORBIT_ZOOM_MAX);
+      document.body.classList.toggle('osiris-orbit-zoom', z < ORBIT_ZOOM_MAX);
+      setStatus(ok ? 'GLOBE MAP READY' : 'MAP READY');
+      return ok;
+    };
+
+    forceGlobe();
 
     const keepProjection = () => {
-      if (!globeApplied) return;
-      try {
-        const projection = map.getProjection?.();
-        const type = typeof projection === 'string' ? projection : projection?.type;
-        if (type && type !== 'globe') map.setProjection?.({ type: 'globe' });
-      } catch {}
+      forceGlobe();
+      setTimeout(forceGlobe, 80);
+      setTimeout(forceGlobe, 300);
     };
 
     map.on?.('style.load', keepProjection);
     map.on?.('load', keepProjection);
     map.on?.('idle', keepProjection);
+    map.on?.('data', () => {
+      if ((map.getZoom?.() || 0) < ORBIT_ZOOM_MAX) keepProjection();
+    });
     map.on?.('zoom', () => {
       const z = map.getZoom?.() || 0;
-      document.body.classList.toggle('osiris-street-zoom', z >= 11);
-      document.body.classList.toggle('osiris-orbit-zoom', z < 11);
-      setStatus(globeApplied && z < 11 ? 'GLOBE MAP READY' : 'STREET MAP READY');
+      document.body.classList.toggle('osiris-street-zoom', z >= ORBIT_ZOOM_MAX);
+      document.body.classList.toggle('osiris-orbit-zoom', z < ORBIT_ZOOM_MAX);
+      forceGlobe();
+      setStatus(z < ORBIT_ZOOM_MAX ? 'GLOBE MAP READY' : 'STREET MAP READY');
     });
   }
 
