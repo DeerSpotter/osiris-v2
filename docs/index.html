@@ -7,11 +7,9 @@
   <title>OSIRIS — Global Map Command</title>
   <meta name="description" content="OSIRIS interactive global map for GitHub Pages.">
   <meta name="github-pages-fallback" content="root index.html redirects to docs for branch based Pages deployments.">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
   <link rel="stylesheet" href="./styles.css?v=20260614-clean-map-controller">
   <style id="osirisNoLegacyGlobe">
-    /* The legacy canvas globe is kept only because osiris-live-cache.js owns the data model.
-       Do not show it during startup or map failure. */
     #globeCanvas.globe-canvas{display:none!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;}
   </style>
 </head>
@@ -33,7 +31,7 @@
         <p>GLOBAL MAP COMMAND</p>
         <a class="support-pill" href="https://github.com/DeerSpotter/osiris-v2" target="_blank" rel="noreferrer">● SUPPORT PROJECT</a>
       </div>
-      <div class="system-copy">POWERED BY OSIRIS OPEN SOURCE MAP ENGINE · SENSORS: ORBITAL LATTICE · NET: LYCAN NETWORK</div>
+      <div class="system-copy">POWERED BY OSIRIS OPEN SOURCE MAP ENGINE</div>
     </header>
 
     <section class="telemetry-card" aria-label="Live telemetry">
@@ -63,11 +61,10 @@
     </nav>
   </main>
 
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <script src="./osiris-live-cache.js?v=20260614-fast-map-rollback"></script>
   <script src="./osiris-panel-selection.js?v=20260614-fast-map-rollback"></script>
-  <script src="./osiris-map-controller.js?v=20260614-fast-detailed-zoom"></script>
-  <script src="./osiris-satellite-toggle.js?v=20260614-satellite-toggle"></script>
-  <script src="./osiris-projection-toggle.js?v=20260614-globe-fullscreen-theme"></script>
+  <script src="./osiris-map-controller.js?v=20260614-maplibre-native-globe"></script>
+  <script src="./osiris-satellite-toggle.js?v=20260614-native-globe-satellite"></script>
 </body>
 </html>
