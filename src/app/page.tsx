@@ -1,3 +1,5 @@
-'use client';
+import OsirisCommandDashboard from '@/components/OsirisCommandDashboard';
 
-export { default } from './command/page';
+export default function HomePage() {
+  return <OsirisCommandDashboard routeLabel="/" />;
+}
