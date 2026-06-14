@@ -264,7 +264,8 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
         getWidth: d => (d.deckCategory === 'military' ? 2.4 : 1.4),
         widthMinPixels: 1,
         widthMaxPixels: 5,
-        rounded: true,
+        jointRounded: true,
+        capRounded: true,
         parameters: { depthTest: false },
       }),
       new ScatterplotLayer<DeckFlight>({
