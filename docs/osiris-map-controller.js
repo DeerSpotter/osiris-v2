@@ -1,5 +1,5 @@
 (() => {
-  const MAPLIBRE_VERSION = '5.24.0';
+  const MAPLIBRE_VERSION = '4.7.1';
   const MAPLIBRE_CSS = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
   const MAPLIBRE_JS = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
   const CARTO_DARK_MATTER = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -66,8 +66,8 @@
       body.osiris-primary-map .real-map-layer{position:fixed;inset:0;z-index:2;opacity:1;pointer-events:auto;background:#05070d;touch-action:none;}
       body.osiris-primary-map:not(.osiris-map-ready) .real-map-layer{opacity:0;pointer-events:none;}
       body.osiris-primary-map.osiris-map-ready .globe-canvas{opacity:0!important;pointer-events:none!important;transition:opacity .22s ease;}
-      body.osiris-primary-map.osiris-map-ready .space-vignette{background:linear-gradient(180deg,rgba(2,3,10,.48),rgba(2,3,10,.04) 24%,rgba(2,3,10,.04) 72%,rgba(2,3,10,.46))!important;z-index:3!important;}
-      body.osiris-primary-map.osiris-map-ready .scan-lines{opacity:.045!important;z-index:4!important;}
+      body.osiris-primary-map.osiris-map-ready .space-vignette{background:linear-gradient(180deg,rgba(2,3,10,.38),rgba(2,3,10,.02) 24%,rgba(2,3,10,.02) 72%,rgba(2,3,10,.38))!important;z-index:3!important;pointer-events:none!important;}
+      body.osiris-primary-map.osiris-map-ready .scan-lines{opacity:.035!important;z-index:4!important;pointer-events:none!important;}
       body.osiris-primary-map .floating-actions{display:none!important;}
       body.osiris-primary-map .maplibregl-canvas{touch-action:none!important;outline:none!important;}
       body.osiris-primary-map .maplibregl-ctrl-bottom-left,body.osiris-primary-map .maplibregl-ctrl-bottom-right,body.osiris-primary-map .maplibregl-ctrl-top-right{display:none!important;}
@@ -134,12 +134,7 @@
     return {
       version: 8,
       sources: {
-        osm: {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: '© OpenStreetMap contributors'
-        }
+        osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' }
       },
       layers: [{ id: 'osm-base', type: 'raster', source: 'osm', paint: { 'raster-opacity': 0.98 } }]
     };
@@ -175,28 +170,17 @@
       return {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [lon, lat] },
-        properties: {
-          nodeId: id,
-          label: n.label || '',
-          layer: n.layer || '',
-          source: n.source || '',
-          color: colorForNode(n),
-          priority: !!n.priority
-        }
+        properties: { nodeId: id, label: n.label || '', layer: n.layer || '', source: n.source || '', color: colorForNode(n), priority: !!n.priority }
       };
     }).filter(Boolean);
   }
 
-  function addSourceSafe(map, id, source) {
-    if (!map.getSource(id)) map.addSource(id, source);
-  }
-
+  function addSourceSafe(map, id, source) { if (!map.getSource(id)) map.addSource(id, source); }
   function addLayerSafe(map, layer, beforeId) {
     if (map.getLayer(layer.id)) return;
     try { beforeId ? map.addLayer(layer, beforeId) : map.addLayer(layer); }
     catch { map.addLayer(layer); }
   }
-
   function firstLabelLayer(map) {
     const layers = map.getStyle()?.layers || [];
     return layers.find((l) => l.type === 'symbol' && /label|place|road|name/i.test(l.id))?.id;
@@ -205,64 +189,15 @@
   function ensureOverlayLayers() {
     const map = state.map;
     if (!map || !map.isStyleLoaded()) return;
-
     addSourceSafe(map, CABLE_SOURCE, { type: 'geojson', data: './data/submarine-cables.json' });
     addSourceSafe(map, ROUTE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     addSourceSafe(map, DATA_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-
     const before = firstLabelLayer(map);
-    addLayerSafe(map, {
-      id: 'osiris-cables-line', type: 'line', source: CABLE_SOURCE,
-      paint: {
-        'line-color': '#1689d6',
-        'line-opacity': ['case', ['any', ['boolean', ['literal', !!model.activeLayers?.sdk_sea], false], ['boolean', ['literal', !!model.activeLayers?.cables], false]], ['interpolate', ['linear'], ['zoom'], 2, 0.20, 7, 0.42, 13, 0.66], 0],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.28, 7, 1.0, 13, 2.1]
-      }
-    }, before);
-    addLayerSafe(map, {
-      id: 'osiris-routes-line', type: 'line', source: ROUTE_SOURCE,
-      paint: {
-        'line-color': ['coalesce', ['get', 'color'], '#1689d6'],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.18, 8, 0.42, 14, 0.66],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.3, 8, 1.1, 14, 2.4]
-      }
-    }, before);
-    addLayerSafe(map, {
-      id: 'osiris-node-halo', type: 'circle', source: DATA_SOURCE,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 5, 8, 12, 14, 20, 19, 32],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.18, 10, 0.30, 18, 0.42],
-        'circle-blur': 0.7
-      }
-    });
-    addLayerSafe(map, {
-      id: 'osiris-nodes', type: 'circle', source: DATA_SOURCE,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2.8, 8, 5.5, 14, 8.5, 19, 12],
-        'circle-color': ['get', 'color'],
-        'circle-stroke-color': '#05070f',
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 2, 1.2, 12, 2.0],
-        'circle-opacity': 0.96
-      }
-    });
-    addLayerSafe(map, {
-      id: 'osiris-node-labels', type: 'symbol', source: DATA_SOURCE, minzoom: 7.0,
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 7, 10, 14, 13, 19, 16],
-        'text-offset': [0, 1.25],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-ignore-placement': false
-      },
-      paint: {
-        'text-color': '#f5d96b',
-        'text-halo-color': '#02030a',
-        'text-halo-width': 1.8,
-        'text-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.0, 8.5, 0.85, 14, 1.0]
-      }
-    });
+    addLayerSafe(map, { id: 'osiris-cables-line', type: 'line', source: CABLE_SOURCE, paint: { 'line-color': '#1689d6', 'line-opacity': ['case', ['any', ['boolean', ['literal', !!model.activeLayers?.sdk_sea], false], ['boolean', ['literal', !!model.activeLayers?.cables], false]], ['interpolate', ['linear'], ['zoom'], 2, 0.20, 7, 0.42, 13, 0.66], 0], 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.28, 7, 1.0, 13, 2.1] } }, before);
+    addLayerSafe(map, { id: 'osiris-routes-line', type: 'line', source: ROUTE_SOURCE, paint: { 'line-color': ['coalesce', ['get', 'color'], '#1689d6'], 'line-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.18, 8, 0.42, 14, 0.66], 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.3, 8, 1.1, 14, 2.4] } }, before);
+    addLayerSafe(map, { id: 'osiris-node-halo', type: 'circle', source: DATA_SOURCE, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 5, 8, 12, 14, 20, 19, 32], 'circle-color': ['get', 'color'], 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.18, 10, 0.30, 18, 0.42], 'circle-blur': 0.7 } });
+    addLayerSafe(map, { id: 'osiris-nodes', type: 'circle', source: DATA_SOURCE, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2.8, 8, 5.5, 14, 8.5, 19, 12], 'circle-color': ['get', 'color'], 'circle-stroke-color': '#05070f', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 2, 1.2, 12, 2.0], 'circle-opacity': 0.96 } });
+    addLayerSafe(map, { id: 'osiris-node-labels', type: 'symbol', source: DATA_SOURCE, minzoom: 8.5, layout: { 'text-field': ['get', 'label'], 'text-size': ['interpolate', ['linear'], ['zoom'], 8.5, 10, 14, 13, 19, 16], 'text-offset': [0, 1.25], 'text-anchor': 'top', 'text-allow-overlap': false, 'text-ignore-placement': false }, paint: { 'text-color': '#f5d96b', 'text-halo-color': '#02030a', 'text-halo-width': 1.8, 'text-opacity': ['interpolate', ['linear'], ['zoom'], 8.5, 0.0, 10, 0.85, 14, 1.0] } });
     syncMapData();
   }
 
@@ -277,9 +212,8 @@
       const showCables = !!(model.activeLayers?.sdk_sea || model.activeLayers?.cables);
       map.setLayoutProperty('osiris-cables-line', 'visibility', showCables ? 'visible' : 'none');
     }
-    const counts = nodes.features.length;
     const feedCount = document.getElementById('feedCount');
-    if (feedCount) feedCount.textContent = String(counts);
+    if (feedCount) feedCount.textContent = String(nodes.features.length);
   }
 
   function markReady() {
@@ -291,10 +225,8 @@
   }
 
   function setMapViewFromUrl(view) {
-    model.view.targetLon = view.lon;
-    model.view.lon = view.lon;
-    model.view.targetLat = view.lat;
-    model.view.lat = view.lat;
+    model.view.targetLon = view.lon; model.view.lon = view.lon;
+    model.view.targetLat = view.lat; model.view.lat = view.lat;
     model.view.zoom = view.zoom;
     if (view.layers.length) {
       const valid = view.layers.filter((key) => layerKeys.includes(key));
@@ -316,8 +248,7 @@
   function focusNodeOnMap(node, zoom = 15.5) {
     if (!state.map || !node) return;
     state.selectedNode = node;
-    const current = state.map.getZoom();
-    state.map.easeTo({ center: [Number(node.lon), Number(node.lat)], zoom: Math.max(current, zoom), duration: 420, pitch: 0, bearing: 0 });
+    state.map.easeTo({ center: [Number(node.lon), Number(node.lat)], zoom: Math.max(state.map.getZoom(), zoom), duration: 420, pitch: 0, bearing: 0 });
   }
 
   function patchCoreFunctions() {
@@ -325,10 +256,7 @@
     updateLayerStatus = function osirisMapControllerUpdateLayerStatus(...args) {
       const result = originalUpdateLayerStatus.apply(this, args);
       clearTimeout(state.syncTimer);
-      state.syncTimer = setTimeout(() => {
-        ensureOverlayLayers();
-        syncMapData();
-      }, 0);
+      state.syncTimer = setTimeout(() => { ensureOverlayLayers(); syncMapData(); }, 0);
       return result;
     };
 
@@ -349,31 +277,20 @@
       button.addEventListener('click', () => {
         model.selected = null;
         state.selectedNode = null;
-        if (state.map && state.map.getZoom() > 9) {
-          state.map.easeTo({ zoom: Math.max(DEFAULT_VIEW.zoom, 6), pitch: 0, bearing: 0, duration: 320 });
-        }
         setTimeout(syncMapData, 60);
       }, { capture: true });
     });
   }
 
   function bindMapEvents(map) {
-    map.on('style.load', () => {
-      ensureOverlayLayers();
-      syncMapData();
-    });
-    map.on('load', () => {
-      ensureOverlayLayers();
-      syncMapData();
-    });
+    map.on('style.load', () => { ensureOverlayLayers(); syncMapData(); });
+    map.on('load', () => { ensureOverlayLayers(); syncMapData(); });
     map.once('idle', markReady);
     setTimeout(() => { if (map.isStyleLoaded()) markReady(); }, 4200);
     map.on('move', () => {
       const center = map.getCenter();
-      model.view.targetLon = normLon(center.lng);
-      model.view.lon = model.view.targetLon;
-      model.view.targetLat = clamp(center.lat, -85, 85);
-      model.view.lat = model.view.targetLat;
+      model.view.targetLon = normLon(center.lng); model.view.lon = model.view.targetLon;
+      model.view.targetLat = clamp(center.lat, -85, 85); model.view.lat = model.view.targetLat;
       model.view.zoom = clamp(map.getZoom(), 1, 20);
       const readout = document.getElementById('readout');
       if (readout) readout.textContent = `MAP READY · ${activeLayerKeys().length} LAYERS · Z ${map.getZoom().toFixed(2)}`;
@@ -411,7 +328,8 @@
       minZoom: 1,
       attributionControl: false,
       cooperativeGestures: false,
-      preserveDrawingBuffer: false
+      preserveDrawingBuffer: false,
+      fadeDuration: 0
     });
     state.map = map;
     window.__osirisRealMap = map;
@@ -435,9 +353,8 @@
     setMapViewFromUrl(view);
     patchCoreFunctions();
     setStatus('LOADING LIVE MAP', `CONNECTING MAPLIBRE ${MAPLIBRE_VERSION} · CARTO STYLE · OSIRIS LAYERS`, 'LOADING');
-    try {
-      await createMap(view);
-    } catch (error) {
+    try { await createMap(view); }
+    catch (error) {
       console.warn('[osiris-map-controller] map failed, using canvas fallback', error);
       document.body.classList.add('osiris-map-failed');
       document.body.classList.remove('osiris-primary-map');
