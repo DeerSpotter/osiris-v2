@@ -1,245 +1,127 @@
-<div align="center">
+# Aeris
 
-# ⬡ OSIRIS
+Real-time 3D flight tracking - altitude-aware, visually stunning.
 
-### Open Source Intelligence & Reconnaissance Integrated System
+Aeris renders live air traffic over the world's busiest airspaces on a premium dark-mode map. Flights are separated by altitude in true 3D: low altitudes glow cyan, high altitudes shift to gold. Select a city, and the camera glides to that airspace with spring-eased animation.
 
-[![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-osiris--v2-00E5FF?style=for-the-badge&logo=githubpages&logoColor=white)](https://deerspotter.github.io/osiris-v2/)
-[![Support OSIRIS](https://img.shields.io/badge/Support_Project-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/posts/159077425)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![MapLibre](https://img.shields.io/badge/MapLibre_GL-GPU_Rendered-396CB2?style=for-the-badge)](https://maplibre.org)
-[![License](https://img.shields.io/badge/License-MIT-D4AF37?style=for-the-badge)](LICENSE)
+[Live Demo](https://aeris.edbn.me) | [HN discussion](https://news.ycombinator.com/item?id=47048004)
 
-**A real-time global intelligence dashboard that aggregates live flight tracking, CCTV networks, earthquake monitoring, conflict zone mapping, and 24/7 news feeds into a single GPU-accelerated interface.**
+<img width="1280" height="832" alt="aeris - 1" src="https://github.com/user-attachments/assets/3fe48868-f8cd-48af-81d6-395c1fce8a2a" />
 
-[GitHub Pages](https://deerspotter.github.io/osiris-v2/) · [Report Bug](https://github.com/DeerSpotter/osiris-v2/issues) · [Request Feature](https://github.com/DeerSpotter/osiris-v2/issues) · [Join Discord](https://discord.gg/umBykEpb98)
+<img width="2559" height="1380" alt="Screenshot 2026-02-15 112222" src="https://github.com/user-attachments/assets/9d1f50ed-be4e-4ef5-95ac-257e9129f8c8" />
 
-</div>
+<img width="2555" height="1387" alt="image" src="https://github.com/user-attachments/assets/a1d2f673-dfdc-4c82-8ee2-7629d91ad94b" />
 
----
+## Stack
 
-## Overview
+| Layer     | Technology                                                       |
+| --------- | ---------------------------------------------------------------- |
+| Framework | Next.js 16 (App Router, Turbopack)                               |
+| Language  | TypeScript                                                       |
+| Styling   | Tailwind CSS v4                                                  |
+| Map       | MapLibre GL JS                                                   |
+| WebGL     | Deck.gl 9 (ScenegraphLayer, IconLayer, PathLayer, MapboxOverlay) |
+| Animation | Motion (Framer Motion)                                           |
+| Data      | Airplanes.live / adsb.lol / OpenSky (3-tier fallback)            |
+| Hosting   | Vercel                                                           |
 
-Osiris is a production-grade OSINT platform that provides situational awareness across multiple intelligence domains. Built with Next.js 16 and MapLibre GL, every data point is rendered via WebGL for 60fps performance even with thousands of concurrent entities on-screen.
+## Getting Started
 
-### Key Capabilities
+```bash
+pnpm install
+cp .env.example .env.local
+pnpm dev
+```
 
-| Domain | Data Points | Sources |
-|--------|------------|---------|
-| **Aviation** | Commercial, Private, Military, Jets | OpenSky Network |
-| **Maritime** | 39 Global Ports, 10 Chokepoints | Static Naval Intel |
-| **CCTV** | 2,000+ Cameras | TfL, WSDOT, Caltrans, NYC DOT, VicRoads + more |
-| **Seismic** | Real-time M2.5+ | USGS Earthquake API |
-| **Fires** | Active Hotspots | NASA FIRMS |
-| **News** | 24/7 Live Streams | 25+ Global Broadcasters |
-| **Weather** | Severe Events | NASA EONET |
-| **Space** | Solar Weather, Satellites | NOAA SWPC, N2YO |
-| **Cyber** | CVE Threats, Vulnerability Scanning | NVD, Custom Scanner |
-| **Conflict** | 13 Active Zones | Static OSINT Intel |
-| **Crypto** | BTC + ETH Wallet Tracing, OFAC SDN Match | blockstream.info, Blockscout, OpenSanctions |
-| **Sanctions** | Person / Org / Vessel SDN Search | OpenSanctions (US OFAC SDN mirror) |
-| **Telegram OSINT** | Geoparsed Posts from Public Channels | `t.me/s/<channel>` web preview |
-
----
+Open [http://localhost:3000](http://localhost:3000).
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  OSIRIS CLIENT                   │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────┐ │
-│  │ MapLibre  │  │  HUD     │  │  RECON Toolkit│ │
-│  │  GL (GPU) │  │ Panels   │  │  Port Scan    │ │
-│  │  WebGL    │  │ Layers   │  │  DNS / WHOIS  │ │
-│  │  Render   │  │ Controls │  │  Vuln Scanner │ │
-│  └──────────┘  └──────────┘  └───────────────┘ │
-├─────────────────────────────────────────────────┤
-│               NEXT.JS API ROUTES                 │
-│  /api/flights         /api/earthquakes          │
-│  /api/cctv            /api/news                 │
-│  /api/fires           /api/maritime             │
-│  /api/gdelt           /api/satellites           │
-│  /api/weather         /api/scanner              │
-│  /api/sentinel        /api/telegram-feed        │
-│  /api/osint/*  (whois, dns, ip, cve, sanctions, │
-│                 crypto, sweep, threats, …)      │
-├─────────────────────────────────────────────────┤
-│              EXTERNAL DATA SOURCES               │
-│  OpenSky · USGS · NASA · NOAA · TfL · NVD      │
-│  GDACS · EONET · FIRMS · N2YO · RSS Feeds      │
-│  blockstream.info · Blockscout · OpenSanctions  │
-│  t.me public previews                            │
-└─────────────────────────────────────────────────┘
+src/
+├── app/
+│   ├── globals.css            Tailwind config, theme vars
+│   ├── layout.tsx             Root layout (Inter font)
+│   ├── page.tsx               Entry - renders <FlightTracker />
+│   └── api/flights/route.ts   adsb.lol reverse proxy (CORS workaround + rate limit)
+├── components/
+│   ├── flight-tracker.tsx     Orchestrator - state, camera, layers, UI
+│   ├── map/
+│   │   ├── map.tsx            MapLibre GL wrapper with React context
+│   │   ├── flight-layers.tsx  Deck.gl overlay - icons, trails, shadows, animation
+│   │   ├── aircraft-model-mapping.ts  ADS-B category → 3D model key + bucketing
+│   │   └── aircraft-model-layers.ts   Builds per-model ScenegraphLayers
+│   └── ui/
+│       ├── altitude-legend.tsx
+│       ├── control-panel.tsx  Tabbed dialog - search, map style, settings
+│       ├── flight-card.tsx    Hover card with flight details
+│       ├── scroll-area.tsx    Custom scrollbar
+│       ├── slider.tsx         Orbit speed slider (Radix)
+│       └── status-bar.tsx     Live status indicator
+├── hooks/
+│   ├── use-flights.ts         Adaptive polling hook with credit-aware throttling
+│   ├── use-settings.tsx       Settings context with localStorage persistence
+│   └── use-trail-history.ts   Trail accumulation + Catmull-Rom smoothing
+└── lib/
+    ├── cities.ts              Curated aviation hub presets
+    ├── flight-api.ts          Barrel re-export for the 3-tier flight client
+    ├── flight-api-client.ts   airplanes.live → adsb.lol → OpenSky fallback chain
+    ├── flight-api-parsing.ts  readsb JSON → FlightState normalization
+    ├── flight-api-types.ts    Shared types for ADS-B providers
+    ├── flight-utils.ts        Altitude→color, unit conversions
+    ├── map-styles.ts          Map style definitions
+    ├── opensky.ts             OpenSky API client + types (Tier 3 fallback)
+    └── utils.ts               cn() utility
 ```
 
----
+## Design
 
-## Features
+- **Dark-first**: CARTO Dark Matter base map, theme-aware UI
+- **3D depth**: 55° pitch, altitude-based z-displacement via Deck.gl
 
-### Intelligence Layers
-- **16 toggleable data layers** with real-time entity counts
-- **GPU-accelerated rendering** — all map data rendered via WebGL, not DOM
-- **Progressive loading** — data fetched on-demand when layers are activated
-- **Viewport-aware** — only loads relevant data for the visible region
+## Aircraft Models
 
-### RECON Toolkit
-- **Port Scanner** — TCP connect scan with service fingerprinting
-- **DNS Lookup** — Full record resolution (A, AAAA, MX, NS, TXT, CNAME)
-- **WHOIS** — Domain/IP registration data (auto-cross-checked against OFAC SDN)
-- **SSL/TLS Inspector** — Certificate chain analysis
-- **IP Intelligence** — Geolocation, ASN, threat reputation (auto-cross-checked against OFAC SDN)
-- **Vulnerability Scanner** — CVE lookup against NVD database
-- **Crypto Wallet Trace** — BTC + ETH lookup (balance, tx history, OFAC SDN sanctions flag)
-- **OFAC Sanctions Search** — query persons, organizations, vessels and aircraft against the US OFAC SDN list
+Aeris renders 14 distinct aircraft silhouettes based on ADS-B emitter category and ICAO type code:
 
-### Live Broadcast Network
-- **25+ live 24/7 news streams** from global broadcasters
-- Click any news dot on the map to open the live stream
-- Feeds from NBC, CBS, ABC, Sky News, Al Jazeera, France 24, NHK, WION, and more
+| Model Key       | Represents                      | Assignment                                     |
+| --------------- | ------------------------------- | ---------------------------------------------- |
+| `narrowbody`    | A320, B737 family               | Category 3 (Small), 4 (Large), 5 (High vortex) |
+| `widebody-2eng` | A330, A350, B777, B787          | Category 6 (Heavy)                             |
+| `widebody-4eng` | A380, B747, A340                | -                                              |
+| `a380`          | Airbus A380                     | Type codes A38x                                |
+| `b737`          | Boeing 737 family               | Type codes B73x, B3xM                          |
+| `regional-jet`  | CRJ, E-Jets, Fokker             | -                                              |
+| `light-prop`    | Cessna, Piper, Cirrus           | Category 2 (Light), 12 (Ultralight)            |
+| `turboprop`     | ATR, Dash-8, Saab               | -                                              |
+| `helicopter`    | All rotorcraft                  | Category 8 (Rotorcraft)                        |
+| `bizjet`        | Gulfstream, Citation, Learjet   | -                                              |
+| `glider`        | Sailplanes                      | Category 9 (Glider)                            |
+| `fighter`       | Military fast-movers            | Category 7 (High-perf)                         |
+| `drone`         | UAVs                            | Category 14 (UAV)                              |
+| `generic`       | Fallback for unknown categories | Category 0, 1, default                         |
 
-### Telegram OSINT Layer
-- **Public-channel feed** scraped from the unauthenticated `t.me/s/<channel>` web preview — no Bot API token, no MTProto
-- Default curated set of 5 channels (EN + RU/UA war reporting), overridable via `OSIRIS_TELEGRAM_CHANNELS`
-- Posts are geoparsed against a multilingual place dictionary (EN + Cyrillic + Arabic) and plotted on the map
-- Click any cyan dot to read the post and jump to the original on Telegram
+Models are optimised GLB files (no Draco compression - avoids external WASM decoder dependency) served from Cloudinary CDN (local backups in `public/models/aircraft/`). A second-tier mapping from ICAO type codes (A320, B738, etc.) refines the assignment when type data is available via the readsb feed.
 
-### Crypto Wallet Intelligence
-- **BTC** lookups via [blockstream.info](https://blockstream.info) (Esplora API, keyless)
-- **ETH** lookups via [Blockscout](https://github.com/blockscout/blockscout)'s public ETH instance (`eth.blockscout.com`, keyless)
-- Every lookup is cross-checked against the OFAC SDN sanctioned-address list (mirrored from [`0xB10C/ofac-sanctioned-digital-currency-addresses`](https://github.com/0xB10C/ofac-sanctioned-digital-currency-addresses))
-- Sanctioned wallets surface a red **SANCTIONED — OFAC SDN** badge in the RECON panel
+- **Smooth animation**: Catmull-Rom spline trails, per-frame interpolation between polls
+- **Glassmorphism**: `backdrop-blur-2xl`, `bg-black/60`, `border-white/[0.08]`
+- **Spring physics**: All UI transitions use spring easing
+- **Responsive**: Desktop sidebar dialog, mobile bottom-sheet with thumb-zone tab bar
+- **API efficiency**: Adaptive polling (30 s → 5 min) based on remaining credits, Page Visibility pause, grid-snapped cache
+- **Persistence**: Settings + map style in localStorage, `?city=IATA` URL deep links
 
-### OFAC SDN Cross-Check
-- Standalone `SANCTIONS` tab in the RECON toolkit — full-text search across persons, organisations, vessels and aircraft
-- WHOIS and IP-intel routes auto-cross-check registrant / ASN-owner names against the SDN list and surface an inline alert
-- Data sourced from [OpenSanctions](https://www.opensanctions.org) (CC-BY 4.0) — keyless, ~7 MB cached in-memory for 24h
+## Environment Variables
 
-### Conflict Zone Monitoring
-- **13 active conflict/tension zones** with severity-coded warning markers
-- Active Wars: Ukraine, Gaza, Sudan, Myanmar, DRC, Yemen
-- High Tension: Syria, Lebanon, Sahel, Somalia, Red Sea
-- Elevated: Taiwan Strait, Korean DMZ
+All variables are optional - Aeris runs with no secrets. See `.env.example` for the full template.
 
-### Performance Optimized
-- **75% reduction in edge requests** vs initial release
-- Aggressive polling relaxation (15-30 min intervals for stable data)
-- Static data served from memory (zero external API calls for news feeds)
-- `layerFetchedRef` prevents duplicate API requests
+| Variable                | Required | Description                                                                                                                                                                                                           |
+| ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_GA_ID`     | No       | Google Analytics 4 measurement ID.                                                                                                                                                                                    |
+| `OPENSKY_CLIENT_ID`     | No       | OAuth2 client id for the server-side OpenSky trace fallback in `src/lib/trails/source/server-trace-service.ts`. Without it, the trace service falls back to public ADS-B aggregators.                                 |
+| `OPENSKY_CLIENT_SECRET` | No       | OAuth2 secret that pairs with `OPENSKY_CLIENT_ID`. Set both or neither.                                                                                                                                               |
+| `OPENAIP_API_KEY`       | No       | API key used by the airspace vector-tile proxy `src/app/api/airspace-tiles/route.ts`. Without it the airspace overlay is disabled cleanly and the client skips OpenAIP tile requests; flight rendering is unaffected. |
 
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/DeerSpotter/osiris-v2.git
-cd osiris-v2
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000)
-
-### Docker / Self-Hosting
-
-```bash
-git clone https://github.com/DeerSpotter/osiris-v2.git
-cd osiris-v2
-cp .env.template .env     # optional — configure keys / port
-docker compose up -d
-```
-
-Open [http://localhost:3000](http://localhost:3000). The image is a multi-stage
-`node:22-alpine` standalone build (~220 MB, non-root). The compose file also
-carries CasaOS app metadata (`x-casaos:`) for one-click install on
-[CasaOS](https://casaos.io). See **[DOCKER.md](DOCKER.md)** for the full Docker,
-CasaOS and API-key guide.
-
-**Prebuilt image (GHCR)** — skip the build and pull it directly:
-
-```bash
-docker pull ghcr.io/aiacos/osiris:latest
-docker run -d -p 3000:3000 --env-file .env ghcr.io/aiacos/osiris:latest
-```
-
-**Custom port** — the container always listens on `3000`; set `OSIRIS_PORT` in
-`.env` to change the published host port (e.g. `OSIRIS_PORT=3005`) without
-editing the compose file.
-
-### Environment Variables
-
-OSIRIS works **partially without any API keys** — all core feeds use public,
-keyless sources. Copy [`.env.template`](.env.template) to `.env` and set only
-what you need:
-
-```env
-# Published host port (container always listens on 3000). Default: 3000
-OSIRIS_PORT=3000
-
-# RECON scanner backend (the only vars the current code reads).
-# SCANNER_KEY must match the backend's OSIRIS_KEY — generate with: openssl rand -hex 32
-SCANNER_URL=
-SCANNER_KEY=
-
-# Optional, for higher rate limits / future sources (see DOCKER.md for signup links)
-FIRMS_API_KEY=                # NASA FIRMS  — firms.modaps.eosdis.nasa.gov/api/map_key/
-OPENSKY_CLIENT_ID=            # OpenSky OAuth2 (since Mar 2025) — opensky-network.org
-OPENSKY_CLIENT_SECRET=
-N2YO_API_KEY=                 # N2YO satellites — n2yo.com (Profile → API key)
-AIS_API_KEY=                 # aisstream.io maritime
-```
-
-> Without `SCANNER_URL`/`SCANNER_KEY` the RECON toolkit returns `503`; every
-> other layer works out of the box. `.env` is gitignored — only the template is committed.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16 (App Router, Turbopack) |
-| Language | TypeScript 5 |
-| Map Engine | MapLibre GL JS (WebGL) |
-| Animations | Framer Motion |
-| Icons | Lucide React |
-| Styling | Custom CSS Design System |
-| Deployment | GitHub Pages static shell + Next.js self-hosting |
-
----
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `F` | Toggle flight layers |
-| `E` | Toggle earthquakes |
-| `S` | Toggle satellites |
-| `D` | Toggle day/night cycle |
-| `Escape` | Close panels |
-
----
+Live flight data (airplanes.live, adsb.lol) is called directly from the browser with CORS - no credentials needed.
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-**🛠️ SUPPORT THE OSIRIS PROJECT**
-The OSIRIS Global Intelligence Grid is entirely open-source, but running the backend scanners and data firehoses isn't cheap.
-
-If you want to help keep the servers alive, and support us to get access to better tools  unlock the **Special OSIRIS Console**, Currently Just a Cool UI. a you can officially support the project here : 
-
-🔗 [Support OSIRIS on Patreon](https://www.patreon.com/posts/159077425)
-
-*Supporters receive the `🔴 RedTeam Console` role and access to encrypted developer comms.*
-
-
-**Built by [simplifaisoul](https://github.com/simplifaisoul)**
-
-[Join our Discord to be a part of this movement!](https://discord.gg/umBykEpb98)
-
-</div>
+MIT
