@@ -1,16 +1,14 @@
 'use strict';
 
 (function () {
-  const VERSION = '20260614-aeris-full-touch-rotation';
+  const VERSION = '20260614-aeris-native-deep-tilt';
   const MIN_PITCH = 0;
-  const MAX_PITCH = 78;
+  const MAX_PITCH = 85;
   const MIN_ZOOM = 1.2;
   const MAX_ZOOM = 20;
-  const HOME = { center: [-75.1652, 39.9526], zoom: 8.2, pitch: 64, bearing: -12 };
+  const HOME = { center: [-75.1652, 39.9526], zoom: 8.2, pitch: 76, bearing: -12 };
 
   let wasActive = false;
-  let activeGesture = null;
-  const pointers = new Map();
 
   function active() {
     return document.body.classList.contains('osiris-aeris-mode');
@@ -30,15 +28,23 @@
     return window.matchMedia?.('(max-width: 760px)')?.matches === true;
   }
 
+  function setPitchCeiling(m) {
+    if (!m) return;
+    try { m.setMaxPitch?.(MAX_PITCH); } catch {}
+    try { m.setMinPitch?.(MIN_PITCH); } catch {}
+  }
+
   function enableAerisHandlers(m) {
     if (!m) return;
+    setPitchCeiling(m);
     try { m.dragPan?.enable?.(); } catch {}
     try { m.scrollZoom?.enable?.(); } catch {}
     try { m.boxZoom?.enable?.(); } catch {}
     try { m.doubleClickZoom?.enable?.(); } catch {}
+    try { m.touchZoomRotate?.enable?.(); } catch {}
+    try { m.touchZoomRotate?.enableRotation?.(); } catch {}
     try { m.dragRotate?.enable?.(); } catch {}
-    try { m.touchPitch?.disable?.(); } catch {}
-    try { m.touchZoomRotate?.disable?.(); } catch {}
+    try { m.touchPitch?.enable?.(); } catch {}
     try { m.keyboard?.enable?.(); } catch {}
   }
 
@@ -47,8 +53,6 @@
     try { m.dragRotate?.disable?.(); } catch {}
     try { m.touchPitch?.disable?.(); } catch {}
     try { m.touchZoomRotate?.enable?.(); } catch {}
-    pointers.clear();
-    activeGesture = null;
   }
 
   function setCamera(next, duration = 180) {
@@ -67,133 +71,20 @@
 
   function pitchBy(delta) {
     const m = map();
-    if (m) setCamera({ pitch: m.getPitch() + delta }, 150);
+    if (m) setCamera({ pitch: m.getPitch() + delta }, 140);
   }
 
   function zoomBy(delta) {
     const m = map();
-    if (m) setCamera({ zoom: m.getZoom() + delta }, 150);
+    if (m) setCamera({ zoom: m.getZoom() + delta }, 140);
   }
 
   function resetBearing() {
-    setCamera({ bearing: 0 }, 180);
+    setCamera({ bearing: 0 }, 160);
   }
 
   function resetView() {
-    setCamera({ center: HOME.center, zoom: mobile() ? 7.2 : HOME.zoom, pitch: HOME.pitch, bearing: HOME.bearing }, 450);
-  }
-
-  function point(event) {
-    return { x: Number(event.clientX), y: Number(event.clientY) };
-  }
-
-  function metrics(a, b) {
-    const pa = point(a);
-    const pb = point(b);
-    const dx = pb.x - pa.x;
-    const dy = pb.y - pa.y;
-    return {
-      ax: pa.x,
-      ay: pa.y,
-      bx: pb.x,
-      by: pb.y,
-      cx: (pa.x + pb.x) / 2,
-      cy: (pa.y + pb.y) / 2,
-      dx,
-      dy,
-      distance: Math.max(1, Math.hypot(dx, dy)),
-      angle: Math.atan2(dy, dx) * 180 / Math.PI
-    };
-  }
-
-  function angleDelta(next, start) {
-    return ((((next - start) + 540) % 360) - 180);
-  }
-
-  function startGesture() {
-    const m = map();
-    if (!m || pointers.size < 2) return;
-    const [a, b] = [...pointers.values()].slice(0, 2);
-    const start = metrics(a, b);
-    const center = m.getCenter();
-    const centerPoint = m.project(center);
-    activeGesture = {
-      start,
-      startZoom: m.getZoom(),
-      startPitch: m.getPitch(),
-      startBearing: m.getBearing(),
-      centerPoint: { x: centerPoint.x, y: centerPoint.y }
-    };
-  }
-
-  function updateGesture(event) {
-    const m = map();
-    if (!active() || !m || !activeGesture || pointers.size < 2) return;
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    const [a, b] = [...pointers.values()].slice(0, 2);
-    const next = metrics(a, b);
-    const start = activeGesture.start;
-    const dx = next.cx - start.cx;
-    const dy = next.cy - start.cy;
-    const scale = clamp(next.distance / start.distance, 0.22, 4.0);
-    const zoom = clamp(activeGesture.startZoom + Math.log2(scale), MIN_ZOOM, MAX_ZOOM);
-    const bearing = activeGesture.startBearing - angleDelta(next.angle, start.angle);
-    const pitch = clamp(activeGesture.startPitch + clamp(-dy * 0.22, -62, 62), MIN_PITCH, MAX_PITCH);
-    const targetPoint = {
-      x: activeGesture.centerPoint.x - dx,
-      y: activeGesture.centerPoint.y - dy
-    };
-    const center = m.unproject(targetPoint);
-    try { m.jumpTo({ center, zoom, bearing, pitch }); } catch {}
-  }
-
-  function endPointer(event) {
-    pointers.delete(event.pointerId);
-    if (pointers.size < 2) activeGesture = null;
-    else startGesture();
-  }
-
-  function isControlTarget(target) {
-    return !!target?.closest?.('.aeris-camera-rail,.aeris-layer-fix,.aeris-card,.aeris-legend,.aeris-panel,.maplibregl-ctrl');
-  }
-
-  function bindGestures(m) {
-    const target = m?.getCanvasContainer?.();
-    if (!target || target.__osirisAerisFullGestureBound) return;
-    target.__osirisAerisFullGestureBound = true;
-
-    target.addEventListener('pointerdown', (event) => {
-      if (!active() || event.pointerType !== 'touch' || isControlTarget(event.target)) return;
-      pointers.set(event.pointerId, event);
-      if (pointers.size >= 2) {
-        event.preventDefault();
-        event.stopPropagation();
-        try { target.setPointerCapture?.(event.pointerId); } catch {}
-        startGesture();
-      }
-    }, { capture: true, passive: false });
-
-    target.addEventListener('pointermove', (event) => {
-      if (!active() || event.pointerType !== 'touch' || !pointers.has(event.pointerId)) return;
-      pointers.set(event.pointerId, event);
-      if (pointers.size >= 2) updateGesture(event);
-    }, { capture: true, passive: false });
-
-    ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'].forEach((name) => {
-      target.addEventListener(name, (event) => {
-        if (event?.pointerType === 'touch') endPointer(event);
-      }, { capture: true, passive: false });
-    });
-
-    ['touchstart', 'touchmove', 'gesturestart', 'gesturechange', 'gestureend'].forEach((name) => {
-      target.addEventListener(name, (event) => {
-        if (!active() || isControlTarget(event.target)) return;
-        if ((event.touches && event.touches.length > 1) || name.startsWith('gesture')) event.preventDefault();
-      }, { capture: true, passive: false });
-    });
+    setCamera({ center: HOME.center, zoom: mobile() ? 7.2 : HOME.zoom, pitch: HOME.pitch, bearing: HOME.bearing }, 420);
   }
 
   function injectCss() {
@@ -233,10 +124,10 @@
       if (!action) return;
       event.preventDefault();
       event.stopPropagation();
-      if (action === 'zoom-in') zoomBy(0.65);
-      if (action === 'zoom-out') zoomBy(-0.65);
-      if (action === 'pitch-up') pitchBy(8);
-      if (action === 'pitch-down') pitchBy(-8);
+      if (action === 'zoom-in') zoomBy(0.75);
+      if (action === 'zoom-out') zoomBy(-0.75);
+      if (action === 'pitch-up') pitchBy(16);
+      if (action === 'pitch-down') pitchBy(-16);
       if (action === 'reset-bearing') resetBearing();
       if (action === 'reset-view') resetView();
     }, { passive: false });
@@ -249,7 +140,6 @@
     const isActive = active();
     if (isActive) {
       enableAerisHandlers(m);
-      bindGestures(m);
       if (!wasActive) {
         resetView();
         window.dispatchEvent(new CustomEvent('osiris:aeris-mode', { detail: { active: true } }));
@@ -268,7 +158,7 @@
     const bind = () => {
       const m = map();
       if (!m) return setTimeout(bind, 200);
-      bindGestures(m);
+      setPitchCeiling(m);
       applyMode();
       if (!m.__osirisAerisInteractionEvents) {
         m.__osirisAerisInteractionEvents = true;
