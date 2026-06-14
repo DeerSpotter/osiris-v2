@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.2.11",
+    "@deck.gl/layers": "^9.2.11",
+    "@deck.gl/mapbox": "^9.2.11",
     "@google/generative-ai": "^0.24.1",
     "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.38.0",
