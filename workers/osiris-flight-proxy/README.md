@@ -40,7 +40,11 @@ Deploy command: npx wrangler deploy
 Production branch: master
 ```
 
-Leave the build command blank. There is no package file in this folder on purpose, so Cloudflare skips the automatic `npm ci` dependency install that fails when no lock file exists. The deploy command uses `npx wrangler deploy`.
+Leave the build command blank. This folder has a tiny matching `package.json` and `package-lock.json` with no install-time dependencies, so Cloudflare's automatic `npm clean-install` step should complete without resolving the full OSIRIS app dependency tree. The deploy command uses `npx wrangler deploy`.
+
+If the build log still lists root app dependencies such as `next`, `react`, `deck.gl`, or `maplibre-gl`, Cloudflare is building an older commit or the root path is still wrong. Retry the latest deployment after this commit, or re-save the path as `workers/osiris-flight-proxy`.
+
+Last deploy trigger marker: 2026-06-14T21:50Z.
 
 ## Manual deploy
 
