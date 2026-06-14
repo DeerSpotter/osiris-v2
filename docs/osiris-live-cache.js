@@ -16,7 +16,7 @@ const bootSequence = $('bootSequence');
 
 const DEG = Math.PI / 180;
 const TWO_PI = Math.PI * 2;
-const VERSION = '20260613-pages-performance-cables';
+const VERSION = '20260613-pages-layer-controls';
 const scriptBase = new URL('.', document.currentScript?.src || location.href);
 const dataBase = new URL('data/', scriptBase);
 const dataUrl = (name) => new URL(name, dataBase).href;
@@ -34,10 +34,39 @@ const palette = {
   coast: 'rgba(176,190,198,.36)', country: 'rgba(73,159,219,.58)', state: 'rgba(218,184,55,.72)', route: 'rgba(25,128,205,.34)'
 };
 
+const layerDefs = [
+  { key: 'cables', label: 'Cable mesh', tone: 'blue' },
+  { key: 'cctv', label: 'CCTV feeds', tone: 'green' },
+  { key: 'live_news', label: 'Live news', tone: 'green' },
+  { key: 'maritime', label: 'Maritime', tone: 'cyan' },
+  { key: 'earthquakes', label: 'Earthquakes', tone: 'orange' },
+  { key: 'news_intel', label: 'News intel', tone: 'magenta' },
+  { key: 'global_incidents', label: 'Global incidents', tone: 'magenta' }
+];
+const layerKeys = layerDefs.map((l) => l.key);
+const layerLabels = Object.fromEntries(layerDefs.map((l) => [l.key, l.label]));
+const presets = {
+  layers: layerKeys,
+  markets: ['maritime', 'cables'],
+  intel: ['live_news', 'news_intel', 'global_incidents', 'earthquakes'],
+  recon: ['cctv', 'maritime', 'earthquakes', 'cables'],
+  search: ['cctv', 'live_news', 'news_intel', 'global_incidents', 'maritime', 'earthquakes']
+};
+const presetTitles = {
+  layers: 'MANUAL LAYERS',
+  markets: 'MARKETS / MARITIME VIEW',
+  intel: 'INTEL FEED VIEW',
+  recon: 'RECON SENSOR VIEW',
+  search: 'SEARCH FOCUS VIEW',
+  custom: 'CUSTOM LAYER VIEW'
+};
+
 const model = {
   world: [], states: [], nodes: [], routes: [], liveAt: null,
   fullLiveRequested: false, statesRequested: false, renderEveryMs: innerWidth < 760 ? 42 : 33, lastFrame: 0,
   ready: { world: false, states: false, live: false, fullLive: false }, showRoutes: true,
+  activePreset: 'recon', drawerOpen: false,
+  activeLayers: Object.fromEntries(layerKeys.map((k) => [k, presets.recon.includes(k)])),
   view: { lon: -62, lat: 22, targetLon: -62, targetLat: 22, zoom: 1 },
   pointer: { dragging: false, id: null, x: 0, y: 0, map: new Map(), pinchDistance: 1, pinchZoom: 1 },
   size: { w: 0, h: 0, dpr: 1, cx: 0, cy: 0, r: 0 }
@@ -52,10 +81,10 @@ const fallbackWorld = [
   { rings: [[[113,-12],[133,-10],[153,-24],[147,-39],[122,-38],[112,-28],[113,-12]]] }
 ];
 const fallbackNodes = [
-  { lat: 39.9, lon: -75.1, tone: 'green', size: 4.2, label: 'CACHE PENDING', priority: true },
-  { lat: 40.7, lon: -74.0, tone: 'green', size: 3.8 },
-  { lat: 51.5, lon: -0.1, tone: 'green', size: 3.8 },
-  { lat: -23.5, lon: -46.6, tone: 'green', size: 3.8 }
+  { lat: 39.9, lon: -75.1, tone: 'green', size: 4.2, label: 'CACHE PENDING', priority: true, layer: 'cctv' },
+  { lat: 40.7, lon: -74.0, tone: 'green', size: 3.8, layer: 'cctv' },
+  { lat: 51.5, lon: -0.1, tone: 'green', size: 3.8, layer: 'live_news' },
+  { lat: -23.5, lon: -46.6, tone: 'magenta', size: 3.8, layer: 'news_intel' }
 ];
 model.world = fallbackWorld;
 model.nodes = fallbackNodes;
@@ -66,7 +95,7 @@ tickZulu();
 setInterval(tickZulu, 1000);
 
 let bootStep = 0;
-const bootLines = ['LOADING LOCAL CACHE...', 'FETCHING REPO DATA...', 'STAGING CABLE MESH...', 'RECON ONLINE'];
+const bootLines = ['LOADING LOCAL CACHE...', 'FETCHING REPO DATA...', 'STAGING LAYER CONTROLS...', 'RECON ONLINE'];
 const bootTimer = setInterval(() => {
   bootStep += 1;
   if (bootSequence) bootSequence.textContent = bootLines[Math.min(bootStep, bootLines.length - 1)];
@@ -77,6 +106,37 @@ function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 function normLon(lon) { return ((lon + 540) % 360) - 180; }
 function tone(t, a = 1) {
   return ({ green: `rgba(0,240,138,${a})`, orange: `rgba(213,106,0,${a})`, red: `rgba(221,39,49,${a})`, magenta: `rgba(232,59,127,${a})`, cyan: `rgba(36,220,233,${a})`, gold: `rgba(215,183,57,${a})`, blue: `rgba(25,128,205,${a})` })[t] || `rgba(0,240,138,${a})`;
+}
+function inferLayer(item) {
+  const s = String(item?.source || item?.label || '').toLowerCase();
+  if (item?.layer) return item.layer;
+  if (s.includes('submarine') || s.includes('cable')) return 'cables';
+  if (s.includes('cctv') || s.includes('cam')) return 'cctv';
+  if (s.includes('live news')) return 'live_news';
+  if (s.includes('maritime') || s.includes('ais') || s.includes('ship') || s.includes('port') || s.includes('chokepoint')) return 'maritime';
+  if (s.includes('earthquake') || /^m\d/.test(String(item?.label || '').toLowerCase())) return 'earthquakes';
+  if (s.includes('gdelt') || s.includes('incident')) return 'global_incidents';
+  if (s.includes('news')) return 'news_intel';
+  if (item?.tone === 'orange') return 'earthquakes';
+  if (item?.tone === 'cyan' || item?.tone === 'gold') return 'maritime';
+  if (item?.tone === 'magenta') return 'news_intel';
+  return 'cctv';
+}
+function isLayerOn(key) { return model.activeLayers[key] !== false; }
+function nodeVisible(n) { return isLayerOn(inferLayer(n)); }
+function routeVisible(r) { return model.showRoutes && isLayerOn(inferLayer(r) || 'cables'); }
+function layerSummary() {
+  const active = layerKeys.filter((k) => model.activeLayers[k]);
+  if (active.length === layerKeys.length) return 'ALL LAYERS';
+  if (!active.length) return 'NO DATA LAYERS';
+  if (active.length <= 2) return active.map((k) => layerLabels[k].toUpperCase()).join(' + ');
+  return `${active.length} LAYERS ACTIVE`;
+}
+function countVisible() {
+  let nodes = 0, routes = 0;
+  for (const n of model.nodes) if (nodeVisible(n)) nodes += 1;
+  for (const r of model.routes) if (routeVisible(r)) routes += 1;
+  return { nodes, routes };
 }
 
 async function loadJson(primary, fallback) {
@@ -89,6 +149,7 @@ async function loadJson(primary, fallback) {
   }
   throw new Error(`Failed to load ${primary}`);
 }
+function idle(fn, timeout = 1800) { if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout }); else setTimeout(fn, 400); }
 
 function resize() {
   const dpr = Math.min(devicePixelRatio || 1, innerWidth < 760 ? 1.5 : 2);
@@ -104,7 +165,6 @@ function resize() {
   model.size.r = clamp(base * model.view.zoom, 220, max);
   model.renderEveryMs = mobile ? 42 : 33;
 }
-
 function project(lat, lon, lift = 1) {
   const phi = lat * DEG;
   const lam = normLon(lon - model.view.lon) * DEG;
@@ -115,7 +175,6 @@ function project(lat, lon, lift = 1) {
   const z2 = y * Math.sin(tilt) + z * Math.cos(tilt);
   return { x: model.size.cx + model.size.r * lift * x, y: model.size.cy - model.size.r * lift * y2, z: z2, visible: z2 > -.04 };
 }
-
 function pathRing(ring) {
   let drawing = false, visible = 0;
   const skip = model.view.zoom > 2.2 ? 1 : 2;
@@ -161,19 +220,23 @@ function drawLine(coords, color, width = 1, alpha = 1, lift = 1) {
   ctx.restore();
 }
 function drawRoutes() {
-  if (!model.showRoutes) return;
   const d = lod();
   const max = model.ready.fullLive ? (model.view.zoom > 2.4 ? 1000 : model.view.zoom > 1.5 ? 760 : 520) : model.routes.length;
-  for (let i = 0; i < Math.min(model.routes.length, max); i += 1) {
+  let drawn = 0;
+  for (let i = 0; i < model.routes.length && drawn < max; i += 1) {
     const r = model.routes[i];
+    if (!routeVisible(r)) continue;
     drawLine(r.coordinates, r.color || palette.route, r.width || .65, (r.alpha ?? .32) * d.route, 1.006);
+    drawn += 1;
   }
 }
 function drawNodes() {
   const d = lod();
   const max = model.view.zoom > 2.2 ? 1200 : model.view.zoom > 1.4 ? 720 : 420;
-  for (let i = 0; i < Math.min(model.nodes.length, max); i += 1) {
+  let drawn = 0;
+  for (let i = 0; i < model.nodes.length && drawn < max; i += 1) {
     const n = model.nodes[i];
+    if (!nodeVisible(n)) continue;
     const p = project(n.lat, n.lon, 1.015);
     if (!p.visible) continue;
     const c = tone(n.tone, 1); const s = (n.size || 3.6) * d.node;
@@ -183,6 +246,7 @@ function drawNodes() {
       ctx.shadowBlur = 6; ctx.font = '600 13px ui-monospace,SFMono-Regular,Menlo,monospace'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.strokeText(n.label, p.x + 8, p.y + 13); ctx.fillStyle = c; ctx.fillText(n.label, p.x + 8, p.y + 13);
     }
     ctx.restore();
+    drawn += 1;
   }
 }
 function drawLabels() {
@@ -227,7 +291,7 @@ function frame(time = 0) {
   if (readout) {
     const detail = model.view.zoom >= 1.68 && model.ready.states ? 'STATE OUTLINES' : model.view.zoom >= 1.04 && model.ready.world ? 'COUNTRY OUTLINES' : 'CONTINENT COASTLINES';
     const cache = model.ready.fullLive ? 'FULL CACHE' : model.ready.live ? 'FAST CABLE MESH' : 'CACHE MISS';
-    readout.textContent = `${detail} · ${cache} · Z ${model.view.zoom.toFixed(2)}`;
+    readout.textContent = `${detail} · ${cache} · ${layerSummary()} · Z ${model.view.zoom.toFixed(2)}`;
   }
 }
 
@@ -253,22 +317,52 @@ function topoFeatures(topology, objectName) {
 function goodNode(n) {
   const lat = Number(n.lat ?? n.latitude), lon = Number(n.lon ?? n.lng ?? n.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return { lat, lon, tone: n.tone || 'green', size: clamp(Number(n.size) || 3.6, 2.4, 9), label: n.label || n.name || '', priority: !!n.priority };
+  const node = { lat, lon, tone: n.tone || 'green', size: clamp(Number(n.size) || 3.6, 2.4, 9), label: n.label || n.name || '', source: n.source || '', layer: n.layer || '', priority: !!n.priority };
+  node.layer = inferLayer(node);
+  return node;
 }
 function goodRoute(r) {
   const coords = r.coordinates || r.path || [];
   const out = coords.map((p) => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p.lon ?? p.lng), Number(p.lat)]).filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat));
-  return out.length > 1 ? { coordinates: out, color: r.color || palette.route, width: Number(r.width) || .65, alpha: Number(r.alpha) || .32 } : null;
+  if (out.length <= 1) return null;
+  const route = { coordinates: out, color: r.color || palette.route, width: Number(r.width) || .65, alpha: Number(r.alpha) || .32, source: r.source || 'OSIRIS submarine cable data', layer: r.layer || 'cables' };
+  route.layer = inferLayer(route);
+  return route;
+}
+function updateLayerStatus() {
+  const counts = countVisible();
+  if (feedCount) feedCount.textContent = String(counts.nodes);
+  if (eventTitle) eventTitle.textContent = presetTitles[model.activePreset] || presetTitles.custom;
+  if (eventMeta) eventMeta.textContent = `${counts.nodes.toLocaleString()} visible nodes · ${counts.routes.toLocaleString()} visible routes · ${layerSummary()}`;
+  document.querySelectorAll('.bottom-nav button').forEach((b) => b.classList.toggle('active', b.dataset.layer === model.activePreset));
+  document.querySelectorAll('[data-toggle-layer]').forEach((b) => {
+    const key = b.getAttribute('data-toggle-layer');
+    b.classList.toggle('active', !!model.activeLayers[key]);
+    b.setAttribute('aria-pressed', String(!!model.activeLayers[key]));
+  });
+}
+function applyLayerSet(keys, preset = 'custom') {
+  const wanted = new Set(keys);
+  for (const key of layerKeys) model.activeLayers[key] = wanted.has(key);
+  model.activePreset = preset;
+  model.showRoutes = model.activeLayers.cables;
+  orbitBtn?.classList.toggle('disabled', !model.showRoutes);
+  updateLayerStatus();
+}
+function toggleLayer(key) {
+  model.activeLayers[key] = !model.activeLayers[key];
+  model.activePreset = 'custom';
+  model.showRoutes = model.activeLayers.cables;
+  orbitBtn?.classList.toggle('disabled', !model.showRoutes);
+  updateLayerStatus();
 }
 function applyLive(live, full = false) {
   const nodes = Array.isArray(live.nodes) ? live.nodes.map(goodNode).filter(Boolean) : [];
   const routes = Array.isArray(live.routes) ? live.routes.map(goodRoute).filter(Boolean) : [];
   if (!nodes.length && !routes.length) return false;
   model.nodes = nodes; model.routes = routes; model.liveAt = live.generatedAt; model.ready.live = true; model.ready.fullLive = full;
-  if (feedCount) feedCount.textContent = String(live.counts?.totalNodes || nodes.length);
   if (systemState) systemState.textContent = full ? 'FULL CACHE' : 'CABLE MESH';
-  if (eventTitle) eventTitle.textContent = full ? 'FULL REPO DATA ONLINE' : 'REPO CABLE MESH ONLINE';
-  if (eventMeta) eventMeta.textContent = `${nodes.length.toLocaleString()} nodes · ${routes.length.toLocaleString()} cable routes`;
+  updateLayerStatus();
   return true;
 }
 async function ensureFullLive() { if (model.fullLiveRequested || model.ready.fullLive) return; model.fullLiveRequested = true; try { applyLive(await loadJson(urls.liveFull), true); } catch {} }
@@ -282,20 +376,53 @@ async function hydrate() {
     if (eventTitle) eventTitle.textContent = 'WAITING FOR REPO DATA CACHE';
     if (eventMeta) eventMeta.textContent = 'Run the Pages data cache workflow to populate live nodes and cable routes.';
   }
+  idle(ensureFullLive, 2600);
 }
 function setZoom(z) { model.view.zoom = clamp(z, .74, 4.2); resize(); if (model.view.zoom > 1.48) ensureStates(); if (model.view.zoom > 1.8) ensureFullLive(); }
 function resetView() { model.view.targetLon = -62; model.view.targetLat = 22; setZoom(1); }
+function installLayerDrawer() {
+  const style = document.createElement('style');
+  style.textContent = `.layer-drawer{position:fixed;left:10px;right:10px;bottom:72px;z-index:420;background:rgba(3,6,10,.88);border:1px solid rgba(212,175,55,.28);box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 30px rgba(23,126,203,.16);backdrop-filter:blur(16px);border-radius:18px;padding:12px;transform:translateY(18px);opacity:0;pointer-events:none;transition:.18s ease;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.layer-drawer.open{transform:translateY(0);opacity:1;pointer-events:auto}.layer-drawer__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:#d4af37;font-size:10px;letter-spacing:.18em}.layer-drawer__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.layer-chip{display:flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:9px 10px;background:rgba(255,255,255,.04);color:rgba(230,238,242,.56);font-size:10px;text-align:left}.layer-chip.active{border-color:rgba(212,175,55,.55);background:rgba(212,175,55,.12);color:#f5d96b}.layer-dot{width:7px;height:7px;border-radius:999px;box-shadow:0 0 12px currentColor}.layer-actions{display:flex;gap:8px;margin-top:10px}.layer-actions button{flex:1;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;color:rgba(230,238,242,.7);font-size:9px;letter-spacing:.12em;background:rgba(255,255,255,.04)}@media(min-width:760px){.layer-drawer{left:auto;right:86px;bottom:96px;width:340px}}`;
+  document.head.appendChild(style);
+  const drawer = document.createElement('section');
+  drawer.className = 'layer-drawer';
+  drawer.id = 'layerDrawer';
+  drawer.innerHTML = `<div class="layer-drawer__head"><span>LIVE MAP LAYERS</span><button type="button" data-close-layers aria-label="Close layers">×</button></div><div class="layer-drawer__grid">${layerDefs.map((l) => `<button type="button" class="layer-chip" data-toggle-layer="${l.key}" aria-pressed="false"><span class="layer-dot" style="color:${tone(l.tone, 1)};background:currentColor"></span><span>${l.label}</span></button>`).join('')}</div><div class="layer-actions"><button type="button" data-layer-all>ALL ON</button><button type="button" data-layer-clear>ALL OFF</button></div>`;
+  document.body.appendChild(drawer);
+  drawer.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-toggle-layer]');
+    if (toggle) { toggleLayer(toggle.getAttribute('data-toggle-layer')); return; }
+    if (e.target.closest('[data-close-layers]')) { model.drawerOpen = false; drawer.classList.remove('open'); return; }
+    if (e.target.closest('[data-layer-all]')) applyLayerSet(layerKeys, 'layers');
+    if (e.target.closest('[data-layer-clear]')) applyLayerSet([], 'custom');
+  });
+  return drawer;
+}
 function bind() {
+  const drawer = installLayerDrawer();
   canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); model.pointer.map.set(e.pointerId, { x: e.clientX, y: e.clientY }); canvas.setPointerCapture(e.pointerId); if (model.pointer.map.size > 1) { const [a,b] = [...model.pointer.map.values()]; model.pointer.pinchDistance = Math.hypot(a.x-b.x,a.y-b.y) || 1; model.pointer.pinchZoom = model.view.zoom; model.pointer.dragging = false; } else { model.pointer.dragging = true; model.pointer.id = e.pointerId; model.pointer.x = e.clientX; model.pointer.y = e.clientY; } });
   canvas.addEventListener('pointermove', (e) => { if (!model.pointer.map.has(e.pointerId)) return; e.preventDefault(); model.pointer.map.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (model.pointer.map.size > 1) { const [a,b] = [...model.pointer.map.values()]; setZoom(model.pointer.pinchZoom * ((Math.hypot(a.x-b.x,a.y-b.y) || 1) / model.pointer.pinchDistance)); return; } if (!model.pointer.dragging || model.pointer.id !== e.pointerId) return; const dx = e.clientX - model.pointer.x, dy = e.clientY - model.pointer.y, dragScale = clamp(.24 / Math.sqrt(model.view.zoom), .08, .24); model.view.targetLon = normLon(model.view.targetLon - dx * dragScale); model.view.targetLat = clamp(model.view.targetLat + dy * dragScale * .82, -72, 78); model.pointer.x = e.clientX; model.pointer.y = e.clientY; });
   const end = (e) => { model.pointer.map.delete(e.pointerId); model.pointer.dragging = false; model.pointer.id = null; };
   canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end); canvas.addEventListener('lostpointercapture', end);
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(model.view.zoom + (e.deltaY > 0 ? -.12 : .12) * Math.max(1, model.view.zoom * .62)); }, { passive: false });
   locateBtn?.addEventListener('click', resetView);
-  orbitBtn?.addEventListener('click', () => { model.showRoutes = !model.showRoutes; orbitBtn.classList.toggle('disabled', !model.showRoutes); if (eventTitle) eventTitle.textContent = model.showRoutes ? 'REPO CABLE ROUTES ONLINE' : 'REPO CABLE ROUTES MUTED'; });
-  document.querySelectorAll('.bottom-nav button').forEach((b) => b.addEventListener('click', () => { document.querySelectorAll('.bottom-nav button').forEach((x) => x.classList.remove('active')); b.classList.add('active'); if (eventTitle) eventTitle.textContent = `${(b.dataset.layer || 'recon').toUpperCase()} LAYER SELECTED`; }));
+  orbitBtn?.addEventListener('click', () => { model.activeLayers.cables = !model.activeLayers.cables; model.showRoutes = model.activeLayers.cables; orbitBtn.classList.toggle('disabled', !model.showRoutes); model.activePreset = 'custom'; updateLayerStatus(); });
+  document.querySelectorAll('.bottom-nav button').forEach((b) => b.addEventListener('click', () => {
+    const layer = b.dataset.layer || 'recon';
+    if (layer === 'layers') {
+      model.drawerOpen = !model.drawerOpen;
+      drawer.classList.toggle('open', model.drawerOpen);
+      model.activePreset = 'layers';
+      updateLayerStatus();
+      return;
+    }
+    model.drawerOpen = false;
+    drawer.classList.remove('open');
+    applyLayerSet(presets[layer] || presets.recon, layer);
+  }));
   addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'r') resetView(); if (e.key.toLowerCase() === 'o') orbitBtn?.click(); if (e.key === '+' || e.key === '=') setZoom(model.view.zoom + .18); if (e.key === '-' || e.key === '_') setZoom(model.view.zoom - .18); });
   addEventListener('resize', resize);
+  updateLayerStatus();
 }
 
 resize(); bind(); hydrate(); requestAnimationFrame(frame);
