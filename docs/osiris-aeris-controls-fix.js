@@ -1,14 +1,9 @@
 'use strict';
 
 (function () {
-  const VERSION = '20260614-aeris-crisp-layers-fix';
-  const HALO_LAYER_ID = 'osiris-aeris-aircraft-halo';
-  const MODEL_LAYER_ID = 'osiris-aeris-aircraft-models';
-  const LABEL_LAYER_ID = 'osiris-aeris-aircraft-labels';
+  const VERSION = '20260614-aeris-controls-stable';
   const AIR_KEYS = ['flights', 'private', 'jets', 'military'];
   const STORAGE_KEY = 'osiris.aeris.controls';
-  const ALT_FEET_EXPR = ['case', ['<=', ['coalesce', ['get', 'alt'], 0], 20000], ['*', ['coalesce', ['get', 'alt'], 0], 3.28084], ['coalesce', ['get', 'alt'], 0]];
-  const ALT_COLOR = ['interpolate', ['linear'], ALT_FEET_EXPR, 0, '#7af7ff', 499, '#61f5ff', 2001, '#42e7f2', 5000, '#35d0ec', 10000, '#57aae9', 20000, '#a98fe1', 42651, '#ffd45f'];
   const CONTROL_DEFS = [
     ['aircraft', 'Aircraft', 'Flights, private, jets, military'],
     ['trails', 'Trails', 'AERIS trail and track overlays'],
@@ -20,8 +15,8 @@
   ];
 
   let menuOpen = false;
-  let labelLayerIds = null;
   let local = readLocal();
+  let labelLayerIds = null;
 
   function active() { return document.body.classList.contains('osiris-aeris-mode'); }
   function map() { return window.__osirisRealMap || null; }
@@ -69,7 +64,6 @@
       .aeris-layer-fix-state{font-size:9px;font-weight:850;letter-spacing:.1em;color:rgba(234,252,255,.48);}
       .aeris-layer-fix-row.active .aeris-layer-fix-state{color:#7af7ff;}
       @media(max-width:760px){.aeris-layer-fix-button{left:calc(max(12px,env(safe-area-inset-left)) + 62px);bottom:calc(max(10px,env(safe-area-inset-bottom)) + 78px);height:48px;min-width:74px;border-radius:16px;}.aeris-layer-fix-menu{left:max(10px,env(safe-area-inset-left));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 138px);width:min(238px,calc(100vw - 20px));}}
-      @media(max-width:390px){.aeris-layer-fix-menu{width:min(226px,calc(100vw - 20px));}}
     `;
     document.head.appendChild(style);
   }
@@ -157,65 +151,12 @@
     renderMenu();
   }
 
-  function guardHaloLayer(m) {
-    if (!m || m.__osirisAerisCrispGuard) return;
-    m.__osirisAerisCrispGuard = true;
-    const rawSetPaint = m.setPaintProperty.bind(m);
-    const rawSetLayout = m.setLayoutProperty.bind(m);
-    m.setPaintProperty = function osirisAerisSetPaint(id, name, value, ...rest) {
-      if (active() && id === HALO_LAYER_ID && ['circle-opacity', 'circle-blur', 'circle-radius'].includes(name)) value = 0;
-      return rawSetPaint(id, name, value, ...rest);
-    };
-    m.setLayoutProperty = function osirisAerisSetLayout(id, name, value, ...rest) {
-      if (active() && id === HALO_LAYER_ID && name === 'visibility') value = 'none';
-      return rawSetLayout(id, name, value, ...rest);
-    };
-  }
-
-  function styleAircraft() {
-    const m = map();
-    if (!m?.isStyleLoaded?.()) return false;
-    guardHaloLayer(m);
-    const showAircraft = active() && aircraftOn();
-    const modelVisibility = showAircraft ? 'visible' : 'none';
-
-    if (m.getLayer(HALO_LAYER_ID)) {
-      try { m.setLayoutProperty(HALO_LAYER_ID, 'visibility', 'none'); } catch {}
-      try { m.setPaintProperty(HALO_LAYER_ID, 'circle-opacity', 0); } catch {}
-      try { m.setPaintProperty(HALO_LAYER_ID, 'circle-blur', 0); } catch {}
-      try { m.setPaintProperty(HALO_LAYER_ID, 'circle-radius', 0); } catch {}
-    }
-    if (m.getLayer(MODEL_LAYER_ID)) {
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'visibility', modelVisibility); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-field', ['coalesce', ['get', 'glyph'], '✈']); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-rotate', ['coalesce', ['get', 'heading'], 0]); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-rotation-alignment', 'map'); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-pitch-alignment', 'map'); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-allow-overlap', true); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-ignore-placement', true); } catch {}
-      try { m.setLayoutProperty(MODEL_LAYER_ID, 'text-size', ['interpolate', ['linear'], ['zoom'], 1, 11, 7, 15, 12, 22, 18, 30]); } catch {}
-      try { m.setPaintProperty(MODEL_LAYER_ID, 'text-color', ALT_COLOR); } catch {}
-      try { m.setPaintProperty(MODEL_LAYER_ID, 'text-halo-color', 'rgba(2,3,10,.92)'); } catch {}
-      try { m.setPaintProperty(MODEL_LAYER_ID, 'text-halo-width', ['interpolate', ['linear'], ['zoom'], 1, 0.7, 12, 1.35]); } catch {}
-      try { m.setPaintProperty(MODEL_LAYER_ID, 'text-opacity', showAircraft ? 0.98 : 0); } catch {}
-      try { m.setFilter(MODEL_LAYER_ID, showAircraft ? null : ['==', ['get', 'id'], '__none__']); } catch {}
-    }
-    if (m.getLayer(LABEL_LAYER_ID)) {
-      const showLabels = showAircraft && labelsOn();
-      try { m.setLayoutProperty(LABEL_LAYER_ID, 'visibility', showLabels ? 'visible' : 'none'); } catch {}
-      try { m.setPaintProperty(LABEL_LAYER_ID, 'text-color', '#f8ffff'); } catch {}
-      try { m.setPaintProperty(LABEL_LAYER_ID, 'text-opacity', showLabels ? ['interpolate', ['linear'], ['zoom'], 7.2, 0, 9, 0.82, 14, 1] : 0); } catch {}
-      try { m.setFilter(LABEL_LAYER_ID, showLabels ? null : ['==', ['get', 'id'], '__none__']); } catch {}
-    }
-    return true;
-  }
-
   function getLabelLayerIds(m) {
     if (!labelLayerIds) {
       labelLayerIds = (m.getStyle?.().layers || [])
         .filter((layer) => layer.type === 'symbol' && /label|place|road|name|country|state|settlement/i.test(layer.id))
         .map((layer) => layer.id)
-        .filter((id) => id !== MODEL_LAYER_ID && id !== LABEL_LAYER_ID);
+        .filter((id) => !/^osiris-aeris-aircraft/.test(id));
     }
     return labelLayerIds;
   }
@@ -231,14 +172,13 @@
     const trailVisibility = !active() || trailsOn() ? 'visible' : 'none';
     for (const layer of m.getStyle?.().layers || []) {
       if (!/trail|track|history|path/i.test(layer.id)) continue;
-      if ([HALO_LAYER_ID, MODEL_LAYER_ID, LABEL_LAYER_ID].includes(layer.id)) continue;
+      if (/^osiris-aeris-aircraft/.test(layer.id)) continue;
       try { m.setLayoutProperty(layer.id, 'visibility', trailVisibility); } catch {}
     }
   }
 
   function applyAll() {
     if (!active()) setMenuOpen(false);
-    styleAircraft();
     styleLabelsAndTrails();
     renderMenu();
   }
@@ -246,20 +186,16 @@
   function install() {
     injectStyles();
     buildUi();
-    const observer = new MutationObserver(applyAll);
+    const observer = new MutationObserver(() => requestAnimationFrame(applyAll));
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     const bindMap = () => {
       const m = map();
-      if (!m || m.__osirisAerisControlsFixBound) return setTimeout(bindMap, 250);
-      m.__osirisAerisControlsFixBound = true;
+      if (!m || m.__osirisAerisControlsStableBound) return m ? undefined : setTimeout(bindMap, 250);
+      m.__osirisAerisControlsStableBound = true;
       m.on('style.load', () => { labelLayerIds = null; setTimeout(applyAll, 120); });
-      m.on('styledata', () => setTimeout(applyAll, 60));
-      m.on('idle', () => setTimeout(applyAll, 60));
       applyAll();
     };
     bindMap();
-    const tick = () => { applyAll(); setTimeout(tick, active() ? 350 : 1800); };
-    tick();
     window.__osirisAerisControlsFix = { version: VERSION, apply: applyAll };
   }
 
