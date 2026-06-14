@@ -16,6 +16,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Build Pages cache
         run: node .github/scripts/build-pages-data-cache.mjs
+      - name: Enrich video layer cache
+        run: node .github/scripts/enrich-video-layer-cache.mjs
       - name: Commit cache files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
