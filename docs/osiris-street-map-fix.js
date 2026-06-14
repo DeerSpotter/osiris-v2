@@ -4,6 +4,8 @@
   const BASE_MAP_ZOOM = 2.2;
   const OLD_SCALE = 2.25;
   const STREET_SCALE = 4.25;
+  const AUTO_ENTER_APP_ZOOM = 3.35;
+  const AUTO_EXIT_APP_ZOOM = 1.18;
 
   function clampValue(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -59,7 +61,10 @@
       };
     }
 
-    map.on?.('zoomend', () => syncModelFromMap(map));
+    map.on?.('zoomend', () => {
+      syncModelFromMap(map);
+      autoModeTick();
+    });
     map.on?.('moveend', () => syncModelFromMap(map));
     return map;
   }
@@ -143,7 +148,82 @@
     selectNode.__osirisStreetPatch = true;
   }
 
+  function getMapToggle() {
+    return document.querySelector('[data-real-map]');
+  }
+
+  function isRealMapMode() {
+    return document.body.classList.contains('real-map-mode');
+  }
+
+  function setHiddenMapMode(on) {
+    const button = getMapToggle();
+    if (!button || isRealMapMode() === !!on) return;
+    button.click();
+  }
+
+  function appZoomNow() {
+    const map = window.__osirisRealMap;
+    if (map && isRealMapMode()) return appZoomFromStreetZoom(map.getZoom());
+    if (typeof model !== 'undefined') return Number(model.view?.zoom || 1);
+    return 1;
+  }
+
+  function autoModeTick() {
+    const zoom = appZoomNow();
+    if (!isRealMapMode() && zoom >= AUTO_ENTER_APP_ZOOM) {
+      setHiddenMapMode(true);
+      const map = window.__osirisRealMap;
+      if (map) {
+        try { map.easeTo({ zoom: Math.max(map.getZoom(), appZoomToStreetZoom(zoom)), pitch: 28, duration: 180 }); } catch {}
+      }
+      const eventMeta = document.getElementById('eventMeta');
+      if (eventMeta) eventMeta.textContent = 'PINCH TO STREET LEVEL · TAP NODES FOR DETAIL';
+      return;
+    }
+    if (isRealMapMode() && zoom <= AUTO_EXIT_APP_ZOOM) {
+      setHiddenMapMode(false);
+      const eventMeta = document.getElementById('eventMeta');
+      if (eventMeta) eventMeta.textContent = 'DRAG TO ORBIT · PINCH TO ZOOM INTO MAP';
+    }
+  }
+
+  function installAutomaticMapMode() {
+    const style = document.createElement('style');
+    style.textContent = `
+      .real-map-toggle{display:none!important;}
+      .deep-zoom-controls{grid-template-rows:repeat(2,auto)!important;}
+    `;
+    document.head.appendChild(style);
+
+    document.addEventListener('wheel', autoModeTick, { passive: true });
+    document.addEventListener('touchend', () => setTimeout(autoModeTick, 80), { passive: true });
+    document.addEventListener('pointerup', () => setTimeout(autoModeTick, 80), { passive: true });
+    document.addEventListener('click', (event) => {
+      if (event.target?.closest?.('.bottom-nav button')) setTimeout(() => setHiddenMapMode(false), 40);
+    }, true);
+
+    const originalSetZoomInstaller = () => {
+      if (typeof setZoom !== 'function') return setTimeout(originalSetZoomInstaller, 60);
+      if (setZoom.__osirisAutoMapPatch) return;
+      const originalSetZoom = setZoom;
+      setZoom = function autoMapSetZoom(value) {
+        const result = originalSetZoom(value);
+        setTimeout(autoModeTick, 0);
+        return result;
+      };
+      setZoom.__osirisAutoMapPatch = true;
+    };
+    originalSetZoomInstaller();
+
+    const canvas = document.getElementById('globeCanvas');
+    canvas?.addEventListener('pointermove', () => {
+      if (typeof model !== 'undefined' && Number(model.view?.zoom || 1) >= AUTO_ENTER_APP_ZOOM) setTimeout(autoModeTick, 0);
+    }, { passive: true });
+  }
+
   installMapLibreHook();
   installRealMapZoomButtons();
   installNodeStreetZoom();
+  installAutomaticMapMode();
 })();
