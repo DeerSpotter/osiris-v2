@@ -37,6 +37,30 @@ type AerisFlightFeedState = {
   total: number;
 };
 
+type RawAircraft = {
+  hex?: string;
+  flight?: string;
+  lat?: number;
+  lon?: number;
+  alt_baro?: number | 'ground';
+  alt_geom?: number;
+  gs?: number;
+  track?: number;
+  t?: string;
+  r?: string;
+  squawk?: string;
+  nac_p?: number;
+  dbFlags?: number;
+  seen_pos?: number;
+};
+
+type DirectPoint = {
+  id: string;
+  lat: number;
+  lon: number;
+  dist: number;
+};
+
 const EMPTY_FLIGHT_DATA: AerisFlightData = {
   commercial_flights: [],
   private_flights: [],
@@ -46,6 +70,56 @@ const EMPTY_FLIGHT_DATA: AerisFlightData = {
   total: 0,
   rendered_total: 0,
 };
+
+const DIRECT_PROVIDER_ORDER = [
+  { id: 'airplanes.live', baseUrl: 'https://api.airplanes.live/v2' },
+  { id: 'adsb.lol', baseUrl: 'https://api.adsb.lol/v2' },
+] as const;
+
+const DIRECT_POINTS: DirectPoint[] = [
+  { id: 'us-northeast', lat: 40.3, lon: -75.0, dist: 250 },
+  { id: 'us-southeast', lat: 33.65, lon: -84.42, dist: 250 },
+  { id: 'us-midwest', lat: 41.88, lon: -87.63, dist: 250 },
+  { id: 'us-texas', lat: 32.78, lon: -97.04, dist: 250 },
+  { id: 'us-west', lat: 34.05, lon: -118.25, dist: 250 },
+  { id: 'us-pacific-nw', lat: 47.61, lon: -122.33, dist: 250 },
+  { id: 'europe-west', lat: 51.47, lon: -0.45, dist: 250 },
+  { id: 'europe-central', lat: 50.04, lon: 8.57, dist: 250 },
+  { id: 'middle-east', lat: 25.25, lon: 55.36, dist: 250 },
+  { id: 'india', lat: 28.56, lon: 77.1, dist: 250 },
+  { id: 'east-asia', lat: 35.55, lon: 139.78, dist: 250 },
+  { id: 'australia-east', lat: -33.94, lon: 151.18, dist: 250 },
+];
+
+const PRIVATE_JET_TYPES = new Set([
+  'G150','G200','G280','GLEX','G500','G550','G600','G650','G700',
+  'GLF2','GLF3','GLF4','GLF5','GLF6','GL5T','GL7T','GV','GIV',
+  'CL30','CL35','CL60','BD70','BD10',
+  'C25A','C25B','C25C','C500','C510','C525','C550','C560','C56X','C680','C700','C750',
+  'E35L','E50P','E55P','E545','E550',
+  'FA50','FA7X','FA8X','F900','F2TH',
+  'LJ35','LJ40','LJ45','LJ60','LJ70','LJ75',
+  'PC12','PC24','TBM7','TBM8','TBM9',
+  'PRM1','SF50','EA50','VLJ',
+]);
+
+const AIRLINER_TYPES = new Set([
+  'A319','A320','A321','A332','A333','A339','A343','A359','A388',
+  'B737','B738','B739','B38M','B39M','B752','B753','B763','B764','B772','B77L','B77W','B788','B789','B78X',
+  'E170','E175','E190','E195','CRJ7','CRJ9','AT43','AT72','DH8D',
+]);
+
+const MILITARY_INDICATORS = new Set([
+  'C17','C5M','C130','C30J','KC10','KC46','KC35','E3CF','E3TF','E8A',
+  'B1B','B2','B52','F16','F15','F18','F22','F35','A10','F117',
+  'RC135','E6B','P8A','P3','MQ9','RQ4','U2','EP3','RC12',
+  'V22','CH47','UH60','AH64','AH1Z','MV22',
+  'EUFI','RFAL','TORD','TYP','GR4',
+]);
+
+const AIRLINE_CODE_RE = /^([A-Z]{3})\d/;
+const MILITARY_CALLSIGN_RE = /^(RCH|KING|DUKE|EVAC|JAKE|REACH|CONVOY|PAT|VV|VM|CNV|HERKY|NACHO|ROPER|SHELL|LAGR|GOLD|QID)\d/i;
+const MAX_POSITION_AGE_S = 90;
 
 function normalizePayload(payload: Partial<AerisFlightData>): AerisFlightData {
   return {
@@ -81,6 +155,149 @@ async function readErrorMessage(response: Response): Promise<string> {
   return response.statusText || `HTTP ${response.status}`;
 }
 
+function classifyRawAircraft(raw: RawAircraft): OsirisFlight | null {
+  const modelUpper = (raw.t || '').toUpperCase();
+  const flightStr = (raw.flight || '').trim().toUpperCase();
+
+  if (modelUpper === 'TWR') return null;
+  if (typeof raw.seen_pos === 'number' && raw.seen_pos > MAX_POSITION_AGE_S) return null;
+  if (!Number.isFinite(raw.lat) || !Number.isFinite(raw.lon)) return null;
+
+  const altitudeFeet = typeof raw.alt_baro === 'number'
+    ? raw.alt_baro
+    : typeof raw.alt_geom === 'number'
+      ? raw.alt_geom
+      : 0;
+  const altitudeMeters = Math.round(altitudeFeet * 0.3048);
+  const callsign = flightStr || raw.hex || 'UNKNOWN';
+  const airlineMatch = AIRLINE_CODE_RE.exec(callsign);
+  const airlineCode = airlineMatch ? airlineMatch[1] : '';
+
+  let category: OsirisFlight['category'] = 'commercial';
+  if ((raw.dbFlags || 0) & 1 || MILITARY_INDICATORS.has(modelUpper) || MILITARY_CALLSIGN_RE.test(flightStr)) {
+    category = 'military';
+  } else if (PRIVATE_JET_TYPES.has(modelUpper)) {
+    category = 'jet';
+  } else if (!airlineCode && modelUpper && !AIRLINER_TYPES.has(modelUpper)) {
+    category = 'private';
+  }
+
+  return {
+    callsign,
+    lat: Math.round((raw.lat as number) * 100000) / 100000,
+    lng: Math.round((raw.lon as number) * 100000) / 100000,
+    alt: altitudeMeters,
+    heading: typeof raw.track === 'number' ? Math.round(raw.track) : 0,
+    speed_knots: typeof raw.gs === 'number' ? Math.round(raw.gs * 10) / 10 : null,
+    model: raw.t || 'Unknown',
+    icao24: raw.hex || '',
+    registration: raw.r || 'N/A',
+    category,
+  };
+}
+
+async function fetchDirectPoint(point: DirectPoint, signal: AbortSignal) {
+  const path = `/point/${point.lat.toFixed(4)}/${point.lon.toFixed(4)}/${point.dist}`;
+  const errors: string[] = [];
+
+  for (const provider of DIRECT_PROVIDER_ORDER) {
+    try {
+      const response = await fetch(`${provider.baseUrl}${path}`, {
+        cache: 'no-store',
+        signal,
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
+      const payload = await response.json();
+      const ac = Array.isArray(payload?.ac) ? payload.ac as RawAircraft[] : [];
+      return { id: point.id, provider: provider.id, ac, error: null as string | null };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      errors.push(`${provider.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return { id: point.id, provider: null, ac: [] as RawAircraft[], error: errors.join('; ') };
+}
+
+async function fetchDirectPagesFallback(signal: AbortSignal): Promise<AerisFlightData> {
+  const results = await Promise.all(DIRECT_POINTS.map(point => fetchDirectPoint(point, signal)));
+  const commercial_flights: OsirisFlight[] = [];
+  const private_flights: OsirisFlight[] = [];
+  const private_jets: OsirisFlight[] = [];
+  const military_flights: OsirisFlight[] = [];
+  const seen = new Set<string>();
+  let total = 0;
+
+  for (const result of results) {
+    for (const raw of result.ac) {
+      total++;
+      const key = (raw.hex || `${raw.flight || ''}:${raw.lat}:${raw.lon}`).toLowerCase().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+
+      const flight = classifyRawAircraft(raw);
+      if (!flight) continue;
+
+      switch (flight.category) {
+        case 'military':
+          military_flights.push(flight);
+          break;
+        case 'jet':
+          private_jets.push(flight);
+          break;
+        case 'private':
+          private_flights.push(flight);
+          break;
+        default:
+          commercial_flights.push(flight);
+      }
+    }
+  }
+
+  return {
+    commercial_flights,
+    private_flights,
+    private_jets,
+    military_flights,
+    gps_jamming: [],
+    total,
+    rendered_total: commercial_flights.length + private_flights.length + private_jets.length + military_flights.length,
+    timestamp: new Date().toISOString(),
+    source: 'browser direct airplanes.live/adsb.lol fallback',
+    regions: results.map(r => ({ id: r.id, provider: r.provider, count: r.ac.length, error: r.error })),
+  };
+}
+
+async function fetchFlightFeed(signal: AbortSignal): Promise<AerisFlightData> {
+  try {
+    const response = await fetch('/api/flights', {
+      cache: 'no-store',
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Flight feed ${response.status}: ${await readErrorMessage(response)}`);
+    }
+
+    return normalizePayload(await response.json());
+  } catch (error) {
+    if (signal.aborted) throw error;
+
+    // GitHub Pages cannot execute Next API routes. When /api/flights 404s on a
+    // static deployment, fall back to the same public readsb providers directly
+    // from the browser. This keeps the live aviation layer working on Pages.
+    try {
+      return await fetchDirectPagesFallback(signal);
+    } catch (fallbackError) {
+      const primary = error instanceof Error ? error.message : 'Flight feed failed';
+      const fallback = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(`${primary}; direct fallback failed: ${fallback}`);
+    }
+  }
+}
+
 export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
   const [data, setData] = useState<AerisFlightData>(EMPTY_FLIGHT_DATA);
   const [loading, setLoading] = useState(false);
@@ -110,16 +327,7 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
       setError(null);
 
       try {
-        const response = await fetch('/api/flights', {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Flight feed ${response.status}: ${await readErrorMessage(response)}`);
-        }
-
-        const payload = normalizePayload(await response.json());
+        const payload = await fetchFlightFeed(controller.signal);
         if (stopped || controller.signal.aborted) return;
 
         setData(payload);
