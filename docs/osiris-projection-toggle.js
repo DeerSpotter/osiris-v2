@@ -2,7 +2,7 @@
   const STARTED = Date.now();
   const MAX_WAIT_MS = 15000;
   const GLOBE_VERSION = '5.24.0';
-  const GLOBE_STYLE = 'https://demotiles.maplibre.org/style.json';
+  const OFFICIAL_GLOBE_STYLE = 'https://demotiles.maplibre.org/style.json';
   const GLOBE_LAYER_ID = 'globeMapFrame';
 
   const state = {
@@ -10,7 +10,8 @@
     frame: null,
     frameReady: false,
     nodeIndex: new Map(),
-    syncTimer: 0
+    syncTimer: 0,
+    resizeTimer: 0
   };
 
   function urlWantsGlobe() {
@@ -28,9 +29,11 @@
       .projection-toggle.active{background:rgba(215,183,57,.24);border-color:rgba(245,217,107,.88);color:#fff;text-shadow:0 0 10px rgba(245,217,107,.76);}
       .projection-toggle.loading{opacity:.72;pointer-events:none;}
       .projection-toggle:active{transform:scale(.96);}
-      .globe-map-frame{position:fixed;inset:0;z-index:2;border:0;opacity:0;pointer-events:none;background:#02030a;transition:opacity .18s ease;}
+      .globe-map-frame{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;width:100vw!important;height:100vh!important;height:100dvh!important;min-width:100vw!important;min-height:100vh!important;min-height:100dvh!important;z-index:2!important;border:0!important;display:block!important;opacity:0;pointer-events:none;background:#02030a;transition:opacity .14s ease;transform:none!important;contain:none!important;}
       body.osiris-globe-projection .globe-map-frame{opacity:1;pointer-events:auto;}
       body.osiris-globe-projection #realMapLayer{opacity:0!important;pointer-events:none!important;}
+      body.osiris-globe-projection .space-vignette{z-index:3!important;opacity:.82!important;background:linear-gradient(180deg,rgba(2,3,10,.72),rgba(2,3,10,.08) 27%,rgba(2,3,10,.12) 70%,rgba(2,3,10,.7))!important;}
+      body.osiris-globe-projection .scan-lines{z-index:4!important;opacity:.045!important;}
       @media(max-width:760px){.projection-toggle{left:max(12px,env(safe-area-inset-left));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 132px);width:48px;height:48px;border-radius:16px;}}
     `;
     document.head.appendChild(style);
@@ -116,6 +119,10 @@
     if (readout && source) readout.textContent = `${ok ? (mode === 'globe' ? 'GLOBE' : '2D MAP') : 'GLOBE FAILED'} · Z ${source.getZoom().toFixed(2)}`;
   }
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+  }
+
   function globeDocument() {
     const base = new URL('.', location.href).href;
     const css = `https://unpkg.com/maplibre-gl@${GLOBE_VERSION}/dist/maplibre-gl.css`;
@@ -125,32 +132,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="${base}">
-<link rel="stylesheet" href="${css}">
+<base href="${escapeHtml(base)}">
+<link rel="stylesheet" href="${escapeHtml(css)}">
 <style>
-html,body,#map{margin:0;width:100%;height:100%;overflow:hidden;background:#02030a;}
-#map{position:absolute;inset:0;}
-.maplibregl-canvas{outline:none;background:#02030a;}
+html,body,#map{position:fixed;inset:0;margin:0;width:100vw;height:100vh;height:100dvh;min-width:100vw;min-height:100vh;min-height:100dvh;overflow:hidden;background:#02030a;}
+#map{z-index:1;}
+.maplibregl-canvas-container,.maplibregl-canvas{width:100%!important;height:100%!important;outline:none;background:#02030a;}
 .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-top-right{display:none!important;}
-.status{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;padding:9px 12px;border:1px solid rgba(215,183,57,.34);border-radius:999px;background:rgba(5,7,17,.74);color:#f5d96b;font:800 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;pointer-events:none;}
+.status{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;padding:9px 12px;border:1px solid rgba(215,183,57,.34);border-radius:999px;background:rgba(5,7,17,.74);color:#f5d96b;font:800 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;pointer-events:none;box-shadow:0 18px 48px rgba(0,0,0,.42);}
 body.ready .status{display:none;}
+body:after{content:"";position:fixed;inset:0;z-index:3;pointer-events:none;background:linear-gradient(180deg,rgba(2,3,10,.52),rgba(2,3,10,.02) 25%,rgba(2,3,10,.08) 72%,rgba(2,3,10,.62));}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="status" id="status">LOADING 3D GLOBE</div>
-<script src="${js}"><\/script>
+<script src="${escapeHtml(js)}"><\/script>
 <script>
 (() => {
-  const STYLE = ${JSON.stringify(GLOBE_STYLE)};
+  const STYLE = ${JSON.stringify(OFFICIAL_GLOBE_STYLE)};
   let map;
   let pending;
   let ready = false;
   function addSourceSafe(id, source) { try { if (!map.getSource(id)) map.addSource(id, source); } catch {} }
   function addLayerSafe(layer, before) { try { if (!map.getLayer(layer.id)) map.addLayer(layer, before); } catch { try { if (!map.getLayer(layer.id)) map.addLayer(layer); } catch {} } }
   function firstLabelLayer() { return (map.getStyle()?.layers || []).find((layer) => layer.type === 'symbol' && /label|place|road|name/i.test(layer.id))?.id; }
+  function resizeSoon() { [0, 40, 120, 260, 520, 900].forEach((delay) => setTimeout(() => { try { map?.resize?.(); } catch {} }, delay)); }
+  function themeBaseLayers() {
+    const layers = map.getStyle()?.layers || [];
+    layers.forEach((layer) => {
+      try {
+        const id = layer.id;
+        const type = layer.type;
+        const lower = id.toLowerCase();
+        if (type === 'background') map.setPaintProperty(id, 'background-color', '#02030a');
+        if (type === 'fill') {
+          map.setPaintProperty(id, 'fill-color', lower.includes('water') || lower.includes('ocean') ? '#0d1d2a' : '#05080f');
+          map.setPaintProperty(id, 'fill-opacity', lower.includes('water') || lower.includes('ocean') ? 0.92 : 0.98);
+        }
+        if (type === 'line') {
+          map.setPaintProperty(id, 'line-color', lower.includes('boundary') ? '#55626a' : '#233948');
+          map.setPaintProperty(id, 'line-opacity', lower.includes('boundary') ? 0.72 : 0.38);
+          map.setPaintProperty(id, 'line-width', lower.includes('boundary') ? 0.8 : 0.5);
+        }
+        if (type === 'symbol') {
+          map.setPaintProperty(id, 'text-color', lower.includes('country') || lower.includes('place') ? '#8fa6b2' : '#6f8792');
+          map.setPaintProperty(id, 'text-halo-color', '#02030a');
+          map.setPaintProperty(id, 'text-halo-width', 1.6);
+          map.setPaintProperty(id, 'text-opacity', lower.includes('road') ? 0.44 : 0.72);
+          if (map.getLayoutProperty(id, 'icon-image')) map.setPaintProperty(id, 'icon-opacity', 0.42);
+        }
+        if (type === 'circle') {
+          map.setPaintProperty(id, 'circle-color', '#d7b739');
+          map.setPaintProperty(id, 'circle-opacity', 0.42);
+        }
+      } catch {}
+    });
+  }
   function ensureOverlays() {
     if (!map || !map.isStyleLoaded()) return;
+    themeBaseLayers();
     addSourceSafe('globe-cables', { type: 'geojson', data: './data/submarine-cables.json' });
     addSourceSafe('globe-routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     addSourceSafe('globe-nodes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -172,18 +213,22 @@ body.ready .status{display:none;}
     if (Array.isArray(camera.center)) {
       try { map.jumpTo({ center: camera.center, zoom: Math.min(Number(camera.zoom) || 2, 8.5), bearing: 0, pitch: 0 }); } catch {}
     }
+    resizeSoon();
   }
   window.addEventListener('message', (event) => {
     const message = event.data || {};
     if (message.type === 'osiris-globe-sync') applyPayload(message.payload || {});
+    if (message.type === 'osiris-globe-resize') resizeSoon();
   });
-  map = new maplibregl.Map({ container: 'map', style: STYLE, center: [0, 0], zoom: 2, minZoom: 1, maxZoom: 20, pitch: 0, bearing: 0, attributionControl: false, cooperativeGestures: false, fadeDuration: 0 });
-  map.on('style.load', () => { try { map.setProjection({ type: 'globe' }); } catch {} try { map.setRenderWorldCopies(false); } catch {} ensureOverlays(); });
-  map.on('load', () => { ready = true; document.body.classList.add('ready'); ensureOverlays(); parent.postMessage({ type: 'osiris-globe-ready' }, '*'); });
-  map.on('idle', () => { if (!ready) { ready = true; document.body.classList.add('ready'); parent.postMessage({ type: 'osiris-globe-ready' }, '*'); } });
+  window.addEventListener('resize', resizeSoon);
+  map = new maplibregl.Map({ container: 'map', style: STYLE, center: [0, 0], zoom: 2, minZoom: 1, maxZoom: 20, pitch: 0, bearing: 0, attributionControl: false, cooperativeGestures: false, fadeDuration: 0, renderWorldCopies: false });
+  map.on('style.load', () => { try { map.setProjection({ type: 'globe' }); } catch {} try { map.setRenderWorldCopies(false); } catch {} resizeSoon(); ensureOverlays(); });
+  map.on('load', () => { ready = true; document.body.classList.add('ready'); resizeSoon(); ensureOverlays(); parent.postMessage({ type: 'osiris-globe-ready' }, '*'); });
+  map.on('idle', () => { if (!ready) { ready = true; document.body.classList.add('ready'); parent.postMessage({ type: 'osiris-globe-ready' }, '*'); } resizeSoon(); });
   map.on('click', 'globe-nodes', (event) => { const nodeId = event.features?.[0]?.properties?.nodeId; if (nodeId) parent.postMessage({ type: 'osiris-globe-node', nodeId }, '*'); });
   map.on('moveend', () => { try { const c = map.getCenter(); parent.postMessage({ type: 'osiris-globe-camera', camera: { center: [c.lng, c.lat], zoom: map.getZoom() } }, '*'); } catch {} });
   map.on('error', (event) => { console.warn('[osiris globe frame]', event?.error || event); });
+  resizeSoon();
 })();
 <\/script>
 </body>
@@ -192,18 +237,36 @@ body.ready .status{display:none;}
 
   function ensureFrame() {
     if (state.frame) return state.frame;
-    const main = document.querySelector('.osiris-live') || document.body;
     const frame = document.createElement('iframe');
     frame.id = GLOBE_LAYER_ID;
     frame.className = 'globe-map-frame';
     frame.title = 'OSIRIS 3D globe';
     frame.loading = 'eager';
     frame.referrerPolicy = 'no-referrer';
+    frame.setAttribute('scrolling', 'no');
+    frame.setAttribute('allow', 'fullscreen');
+    frame.style.position = 'fixed';
+    frame.style.left = '0';
+    frame.style.top = '0';
+    frame.style.width = '100vw';
+    frame.style.height = '100dvh';
+    frame.style.border = '0';
     frame.srcdoc = globeDocument();
-    main.insertBefore(frame, main.firstChild);
+    document.body.appendChild(frame);
     state.frame = frame;
-    frame.addEventListener('load', () => setTimeout(() => syncFrame(true), 80));
+    frame.addEventListener('load', () => {
+      resizeFrame();
+      setTimeout(() => syncFrame(true), 80);
+    });
     return frame;
+  }
+
+  function resizeFrame() {
+    if (!state.frame?.contentWindow) return;
+    clearTimeout(state.resizeTimer);
+    const post = () => state.frame?.contentWindow?.postMessage({ type: 'osiris-globe-resize' }, '*');
+    [0, 40, 120, 260, 520, 900].forEach((delay) => setTimeout(post, delay));
+    state.resizeTimer = setTimeout(post, 1400);
   }
 
   function syncFrame(includeCamera = false) {
@@ -211,6 +274,7 @@ body.ready .status{display:none;}
     const data = payload();
     if (!includeCamera) delete data.camera;
     state.frame.contentWindow.postMessage({ type: 'osiris-globe-sync', payload: data }, '*');
+    resizeFrame();
   }
 
   function applyProjection(mode) {
@@ -221,13 +285,14 @@ body.ready .status{display:none;}
       ensureFrame();
       document.body.classList.add('osiris-globe-projection');
       state.active = true;
+      resizeFrame();
       setTimeout(() => {
         syncFrame(true);
         button.classList.remove('loading');
         button.classList.add('active');
         button.querySelector('span').textContent = 'GLB';
         setStatus('globe', true);
-      }, state.frameReady ? 60 : 600);
+      }, state.frameReady ? 80 : 650);
       return;
     }
     state.active = false;
@@ -252,6 +317,8 @@ body.ready .status{display:none;}
   function install() {
     injectStyle();
     const button = injectToggle();
+    window.addEventListener('resize', () => { if (state.active) resizeFrame(); });
+    window.addEventListener('orientationchange', () => { if (state.active) resizeFrame(); });
     window.addEventListener('message', (event) => {
       const message = event.data || {};
       if (message.type === 'osiris-globe-ready') { state.frameReady = true; if (state.active) syncFrame(true); }
