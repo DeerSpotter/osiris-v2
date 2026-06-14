@@ -5,69 +5,130 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#d4af37">
   <title>OSIRIS — Global Map Command</title>
-  <meta name="description" content="OSIRIS interactive global map for GitHub Pages.">
-  <meta name="github-pages-fallback" content="root index.html redirects to docs for branch based Pages deployments.">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="./styles.css?v=20260614-clean-map-controller">
-  <style id="osirisNoLegacyGlobe">
-    /* The legacy canvas globe is kept only because osiris-live-cache.js owns the data model.
-       Do not show it during startup or map failure. */
-    #globeCanvas.globe-canvas{display:none!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;}
+  <meta name="description" content="OSIRIS stable tactical command view for GitHub Pages.">
+  <style>
+    :root{
+      --gold:#d4af37;
+      --gold-soft:rgba(212,175,55,.35);
+      --panel:rgba(2,5,14,.82);
+      --panel-strong:rgba(2,5,14,.94);
+      --text:#eef6ff;
+      --muted:rgba(238,246,255,.48);
+      --blue:#87c7ff;
+      --danger:#ff4d6d;
+      --good:#46f0a8;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:#02050d;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;overflow:hidden}
+    button,a{font:inherit}
+    .osiris-live{position:relative;min-height:100dvh;overflow:hidden;background:radial-gradient(circle at 50% 45%,rgba(16,40,70,.55),transparent 42%),linear-gradient(135deg,#030712,#111827 48%,#02050d)}
+    .stars,.scan-lines,.vignette{position:absolute;inset:0;pointer-events:none}
+    .stars{background-image:radial-gradient(circle,rgba(255,255,255,.72) 0 1px,transparent 1px),radial-gradient(circle,rgba(135,199,255,.55) 0 1px,transparent 1px);background-size:83px 83px,137px 137px;opacity:.18;animation:starDrift 34s linear infinite}
+    .scan-lines{background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 4px);mix-blend-mode:screen;opacity:.18}
+    .vignette{box-shadow:inset 0 0 180px rgba(0,0,0,.88),inset 0 -160px 180px rgba(0,0,0,.88)}
+    .map-plane{position:absolute;inset:0;display:grid;place-items:center;transform:translateY(24px)}
+    .globe-wrap{position:relative;width:min(108vmin,900px);aspect-ratio:1;border-radius:999px;filter:drop-shadow(0 0 56px rgba(91,141,255,.28));transition:transform .55s ease,opacity .35s ease}
+    .globe{position:absolute;inset:8%;border-radius:999px;background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.13),transparent 18%),radial-gradient(circle at 62% 60%,rgba(0,0,0,.2),rgba(0,0,0,.72) 72%),linear-gradient(115deg,#123147,#0b1729 44%,#060a13);border:1px solid rgba(135,199,255,.26);overflow:hidden;box-shadow:inset -34px -28px 70px rgba(0,0,0,.75),inset 12px 10px 36px rgba(255,255,255,.06),0 0 90px rgba(31,111,255,.18);animation:slowSpin 32s linear infinite}
+    .globe::before{content:"";position:absolute;inset:-5%;background:linear-gradient(90deg,transparent,rgba(212,175,55,.09),transparent),repeating-linear-gradient(90deg,rgba(135,199,255,.12) 0 1px,transparent 1px 68px),repeating-linear-gradient(0deg,rgba(135,199,255,.1) 0 1px,transparent 1px 68px);opacity:.55;mix-blend-mode:screen}
+    .globe::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 35% 45%,rgba(20,95,74,.7) 0 5%,transparent 5.4%),radial-gradient(ellipse at 52% 32%,rgba(20,95,74,.65) 0 6%,transparent 6.4%),radial-gradient(ellipse at 58% 58%,rgba(20,95,74,.54) 0 5%,transparent 5.4%),radial-gradient(ellipse at 42% 67%,rgba(20,95,74,.48) 0 4.5%,transparent 4.9%);filter:blur(.2px);opacity:.52}
+    .ring{position:absolute;inset:2%;border:1px solid rgba(212,175,55,.22);border-radius:999px;animation:orbit 18s linear infinite}.ring.r2{inset:12%;border-color:rgba(135,199,255,.2);animation-duration:23s;transform:rotateX(68deg) rotateZ(24deg)}.ring.r3{inset:22%;border-color:rgba(70,240,168,.16);animation-duration:29s;transform:rotateX(72deg) rotateZ(-33deg)}
+    .node{position:absolute;width:12px;height:12px;border-radius:999px;background:var(--gold);box-shadow:0 0 0 8px rgba(212,175,55,.12),0 0 22px rgba(212,175,55,.9);animation:pulse 2.1s ease-in-out infinite}.node::after{content:attr(data-label);position:absolute;left:18px;top:-7px;color:rgba(238,246,255,.82);font-size:11px;letter-spacing:.2em;white-space:nowrap;text-shadow:0 0 12px #000}.n1{left:59%;top:33%}.n2{left:47%;top:48%;background:var(--danger);box-shadow:0 0 0 8px rgba(255,77,109,.13),0 0 22px rgba(255,77,109,.9)}.n3{left:67%;top:57%;background:var(--blue);box-shadow:0 0 0 8px rgba(135,199,255,.13),0 0 22px rgba(135,199,255,.85)}.n4{left:38%;top:62%;background:var(--good);box-shadow:0 0 0 8px rgba(70,240,168,.12),0 0 22px rgba(70,240,168,.85)}
+    .mode-2d .globe-wrap{transform:scale(1.45) rotateX(62deg);opacity:.8}.mode-sat .globe{background:radial-gradient(circle at 36% 26%,rgba(255,255,255,.18),transparent 18%),linear-gradient(115deg,#1e3140,#0c1d26 45%,#05070a)}.mode-sat .globe::after{opacity:.8;filter:saturate(1.3)}
+    .live-header{position:absolute;z-index:5;top:calc(env(safe-area-inset-top) + 42px);left:clamp(20px,6vw,76px);right:20px;display:flex;align-items:flex-start;gap:18px;justify-content:space-between;pointer-events:none}.brand h1{margin:0;color:var(--gold);font-size:clamp(3.8rem,12vw,8rem);letter-spacing:.33em;line-height:.82;text-shadow:0 0 28px rgba(212,175,55,.2)}.brand p{margin:22px 0 0;color:rgba(238,246,255,.26);font-size:clamp(.9rem,2.8vw,1.35rem);letter-spacing:.45em}.support-pill{pointer-events:auto;display:inline-flex;align-items:center;gap:.7rem;min-width:max-content;margin-top:2px;padding:14px 22px;border:1px solid var(--gold-soft);border-radius:999px;background:rgba(2,5,14,.55);color:var(--gold);text-decoration:none;letter-spacing:.22em;font-weight:900;font-size:.86rem;box-shadow:0 0 22px rgba(212,175,55,.09)}
+    .readout{position:absolute;z-index:6;top:calc(env(safe-area-inset-top) + 185px);left:clamp(20px,6vw,76px);display:flex;gap:10px;flex-wrap:wrap;max-width:min(86vw,760px)}.chip{border:1px solid rgba(135,199,255,.15);background:rgba(2,5,14,.62);backdrop-filter:blur(14px);border-radius:999px;padding:9px 12px;color:rgba(238,246,255,.65);font-size:.72rem;letter-spacing:.16em}.chip strong{color:var(--gold)}
+    .event-card{position:absolute;z-index:6;right:clamp(16px,4vw,46px);top:calc(env(safe-area-inset-top) + 206px);width:min(340px,calc(100vw - 32px));padding:18px;border:1px solid rgba(212,175,55,.18);border-radius:24px;background:rgba(2,5,14,.62);box-shadow:0 18px 60px rgba(0,0,0,.35);backdrop-filter:blur(18px)}.event-card small{display:block;color:var(--gold);letter-spacing:.28em;font-size:.65rem;margin-bottom:8px}.event-card strong{display:block;font-size:1rem;letter-spacing:.13em}.event-card span{display:block;margin-top:9px;color:var(--muted);font-size:.72rem;letter-spacing:.11em;line-height:1.55}
+    .mode-controls{position:absolute;z-index:8;left:clamp(16px,3vw,36px);bottom:calc(env(safe-area-inset-bottom) + 154px);display:grid;gap:12px}.mode-controls button{width:74px;height:74px;border-radius:25px;border:1px solid rgba(212,175,55,.32);background:rgba(2,5,14,.76);color:var(--gold);font-weight:900;letter-spacing:.16em;box-shadow:0 0 20px rgba(212,175,55,.07);touch-action:manipulation}.mode-controls button.active{background:rgba(212,175,55,.16);box-shadow:0 0 28px rgba(212,175,55,.16),inset 0 0 0 1px rgba(212,175,55,.28)}
+    .bottom-nav{position:absolute;z-index:8;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:calc(env(safe-area-inset-bottom) + 24px);height:106px;border:1px solid rgba(212,175,55,.2);border-radius:32px;background:rgba(2,5,14,.86);display:grid;grid-template-columns:repeat(5,1fr);box-shadow:0 20px 70px rgba(0,0,0,.45);backdrop-filter:blur(18px)}.bottom-nav button{border:0;background:transparent;color:rgba(238,246,255,.42);display:grid;place-items:center;padding:14px 4px 13px;letter-spacing:.22em}.bottom-nav .icon{font-size:2rem;line-height:1;color:rgba(238,246,255,.45)}.bottom-nav small{font-size:.68rem}.bottom-nav button.active{color:var(--gold)}.bottom-nav button.active .icon{color:var(--gold);text-shadow:0 0 18px rgba(212,175,55,.28)}
+    .panel{position:absolute;z-index:10;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 142px);max-height:42dvh;overflow:auto;border:1px solid rgba(212,175,55,.22);border-radius:24px;background:rgba(2,5,14,.92);backdrop-filter:blur(20px);padding:18px;display:none;box-shadow:0 18px 70px rgba(0,0,0,.52)}.panel.open{display:block}.panel h2{margin:0 0 14px;color:var(--gold);font-size:1rem;letter-spacing:.26em}.panel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.toggle{border:1px solid rgba(135,199,255,.12);border-radius:16px;padding:12px;background:rgba(255,255,255,.03);color:rgba(238,246,255,.72);letter-spacing:.12em;font-size:.72rem;text-align:left}.toggle.on{border-color:rgba(212,175,55,.35);color:var(--gold);background:rgba(212,175,55,.08)}
+    @keyframes slowSpin{to{transform:rotate(360deg)}}@keyframes orbit{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{transform:scale(.92);opacity:.75}50%{transform:scale(1.18);opacity:1}}@keyframes starDrift{to{background-position:83px 83px,137px 137px}}
+    @media (max-width:700px){.live-header{top:calc(env(safe-area-inset-top) + 42px);left:28px}.brand h1{font-size:4.8rem;letter-spacing:.28em}.brand p{font-size:.82rem;letter-spacing:.38em}.support-pill{position:absolute;right:0;top:2px;padding:11px 15px;font-size:.72rem}.readout,.event-card{display:none}.map-plane{transform:translateY(12px)}.globe-wrap{width:116vmin}.bottom-nav{height:108px;bottom:calc(env(safe-area-inset-bottom) + 22px);border-radius:28px}.mode-controls{bottom:calc(env(safe-area-inset-bottom) + 152px);left:26px}.mode-controls button{width:76px;height:76px}.panel{bottom:calc(env(safe-area-inset-bottom) + 140px)}}
   </style>
 </head>
-<body>
-  <div class="boot" id="boot" aria-live="polite">
-    <div class="boot-noise"></div>
-    <div class="boot-mark">OSIRIS</div>
-    <div class="boot-sequence" id="bootSequence">INITIALIZING GLOBAL MAP...</div>
-  </div>
-
-  <main class="osiris-live" aria-label="OSIRIS interactive global map">
-    <canvas id="globeCanvas" class="globe-canvas" aria-hidden="true"></canvas>
-    <div class="space-vignette" aria-hidden="true"></div>
+<body class="mode-glb">
+  <main class="osiris-live" aria-label="OSIRIS stable command view">
+    <div class="stars" aria-hidden="true"></div>
+    <div class="map-plane" aria-hidden="true">
+      <div class="globe-wrap">
+        <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+        <div class="globe"></div>
+        <i class="node n1" data-label="EUCOM"></i>
+        <i class="node n2" data-label="CENTCOM"></i>
+        <i class="node n3" data-label="INDOPACOM"></i>
+        <i class="node n4" data-label="AFRICOM"></i>
+      </div>
+    </div>
     <div class="scan-lines" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
 
     <header class="live-header">
-      <div class="brand-row">
-        <h1>OSIRIS</h1>
-        <p>GLOBAL MAP COMMAND</p>
-        <a class="support-pill" href="https://github.com/DeerSpotter/osiris-v2" target="_blank" rel="noreferrer">● SUPPORT PROJECT</a>
-      </div>
-      <div class="system-copy">POWERED BY OSIRIS OPEN SOURCE MAP ENGINE · SENSORS: ORBITAL LATTICE · NET: LYCAN NETWORK</div>
+      <div class="brand"><h1>OSIRIS</h1><p>GLOBAL MAP COMMAND</p></div>
+      <a class="support-pill" href="https://github.com/DeerSpotter/osiris-v2" target="_blank" rel="noreferrer">● SUPPORT PROJECT</a>
     </header>
 
-    <section class="telemetry-card" aria-label="Live telemetry">
-      <span id="zulu">ZULU --:--:--Z</span>
-      <span>SYS <strong id="systemState">LOADING</strong></span>
-      <span><strong id="feedCount">0</strong> FEEDS</span>
-      <span id="readout">LOADING REPO CACHE</span>
+    <section class="readout" aria-label="Status readout">
+      <span class="chip" id="zulu">ZULU --:--:--Z</span>
+      <span class="chip">SYS <strong>STABLE</strong></span>
+      <span class="chip">MODE <strong id="modeLabel">GLB</strong></span>
+      <span class="chip">RENDER <strong>CSS 3D</strong></span>
     </section>
 
-    <section class="event-card" aria-label="Selected event">
-      <span class="event-kicker">RECON LAYER</span>
-      <strong id="eventTitle">CONNECTING TO REPO DATA CACHE</strong>
-      <span id="eventMeta">PINCH OR WHEEL TO ZOOM · TAP A NODE</span>
-    </section>
+    <aside class="event-card" aria-label="Selected event">
+      <small>RECON LAYER</small>
+      <strong>STABLE COMMAND SURFACE ONLINE</strong>
+      <span>No legacy startup globe. No MapLibre low zoom overload. Use 2D, 3D, or SAT modes from the left rail.</span>
+    </aside>
 
-    <div class="floating-actions" aria-label="Map controls">
-      <button type="button" id="locateBtn" aria-label="Focus North America"><span class="pin-icon"></span></button>
-      <button type="button" id="orbitBtn" aria-label="Toggle repository routes"><span class="orbit-icon"></span></button>
+    <div class="mode-controls" aria-label="Map mode controls">
+      <button type="button" data-mode="mode-2d">2D</button>
+      <button type="button" data-mode="mode-glb" class="active">3D</button>
+      <button type="button" data-mode="mode-sat">SAT</button>
     </div>
 
+    <section class="panel" id="panel" aria-live="polite">
+      <h2 id="panelTitle">RECON</h2>
+      <div class="panel-grid" id="panelGrid"></div>
+    </section>
+
     <nav class="bottom-nav" aria-label="OSIRIS navigation">
-      <button type="button" data-layer="layers"><span class="nav-icon">▱</span><small>LAYERS</small></button>
-      <button type="button" data-layer="markets"><span class="nav-icon">▥</span><small>MARKETS</small></button>
-      <button type="button" data-layer="intel"><span class="nav-icon">▤</span><small>INTEL</small></button>
-      <button type="button" class="active" data-layer="recon"><span class="nav-icon">◎</span><small>RECON</small></button>
-      <button type="button" data-layer="search"><span class="nav-icon">⌕</span><small>SEARCH</small></button>
+      <button type="button" data-panel="LAYERS"><span class="icon">▱</span><small>LAYERS</small></button>
+      <button type="button" data-panel="MARKETS"><span class="icon">▥</span><small>MARKETS</small></button>
+      <button type="button" data-panel="INTEL"><span class="icon">▤</span><small>INTEL</small></button>
+      <button type="button" data-panel="RECON" class="active"><span class="icon">◎</span><small>RECON</small></button>
+      <button type="button" data-panel="SEARCH"><span class="icon">⌕</span><small>SEARCH</small></button>
     </nav>
   </main>
-
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="./osiris-live-cache.js?v=20260614-fast-map-rollback"></script>
-  <script src="./osiris-panel-selection.js?v=20260614-fast-map-rollback"></script>
-  <script src="./osiris-map-controller.js?v=20260614-fast-detailed-zoom"></script>
-  <script src="./osiris-satellite-toggle.js?v=20260614-satellite-toggle"></script>
-  <script src="./osiris-projection-toggle.js?v=20260614-globe-fullscreen-theme"></script>
+  <script>
+    const modeLabel = document.getElementById('modeLabel');
+    const modeNames = {'mode-2d':'2D','mode-glb':'GLB','mode-sat':'SAT'};
+    document.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => {
+      document.body.classList.remove('mode-2d','mode-glb','mode-sat');
+      document.body.classList.add(btn.dataset.mode);
+      document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b === btn));
+      modeLabel.textContent = modeNames[btn.dataset.mode] || 'GLB';
+    }));
+    const panelData = {
+      LAYERS:['Conflict Zones','Maritime','Air Tracks','Earthquakes','Infrastructure','CCTV','Weather','Cyber'],
+      MARKETS:['DOW','NASDAQ','S&P 500','Oil','Gold','BTC','DXY','VIX'],
+      INTEL:['Live News','GDELT','Space Weather','Radiation','Fires','Balloons','Satellites','Cables'],
+      RECON:['EUCOM','CENTCOM','INDOPACOM','AFRICOM','NORTHCOM','SOUTHCOM','Orbital Mesh','Command Routes'],
+      SEARCH:['Coordinate Search','Threat Search','Feed Search','Region Filter','Asset Lookup','Timeline']
+    };
+    const panel = document.getElementById('panel');
+    const panelTitle = document.getElementById('panelTitle');
+    const panelGrid = document.getElementById('panelGrid');
+    document.querySelectorAll('[data-panel]').forEach(btn => btn.addEventListener('click', () => {
+      const name = btn.dataset.panel;
+      document.querySelectorAll('[data-panel]').forEach(b => b.classList.toggle('active', b === btn));
+      panelTitle.textContent = name;
+      panelGrid.innerHTML = (panelData[name] || []).map((item, i) => `<button class="toggle ${i < 4 ? 'on' : ''}" type="button">${item}</button>`).join('');
+      panel.classList.add('open');
+    }));
+    panel.addEventListener('click', event => {
+      if (event.target.classList.contains('toggle')) event.target.classList.toggle('on');
+    });
+    const zulu = document.getElementById('zulu');
+    function tick(){zulu.textContent='ZULU '+new Date().toISOString().slice(11,19)+'Z'}
+    tick(); setInterval(tick,1000);
+  </script>
 </body>
 </html>
