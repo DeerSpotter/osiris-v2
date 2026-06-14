@@ -58,6 +58,15 @@
   function callsign(f) { return String(f?.callsign || f?.icao24 || f?.registration || 'LIVE FLIGHT').trim(); }
   function aircraftGlyph(f) { return f?.aircraft_category === 'heli' ? '✚' : '✈'; }
 
+  function activeAirLayerKeys() {
+    if (typeof model === 'undefined' || !model.activeLayers) return [];
+    return AIR_LAYERS.filter((key) => !!model.activeLayers[key]);
+  }
+
+  function isAirLayerActive(layer) {
+    return activeAirLayerKeys().includes(layer);
+  }
+
   function featureId(f, layer, index) {
     return String(f?.icao24 || f?.hex || f?.registration || `${layer}:${callsign(f)}:${index}`).toLowerCase();
   }
@@ -112,6 +121,15 @@
     }
 
     return { type: 'FeatureCollection', features };
+  }
+
+  function visibleAircraftFeatures() {
+    const visible = new Set(activeAirLayerKeys());
+    const all = allAircraftFeatures();
+    return {
+      type: 'FeatureCollection',
+      features: all.features.filter((feature) => visible.has(feature.properties.layer))
+    };
   }
 
   function nonAircraftFilter() {
@@ -202,10 +220,10 @@
   function updateAircraftSource(force = false) {
     const map = getMap();
     if (!ensureAircraftLayers()) return;
-    const stamp = window.__osirisLastFlightFeed?.updatedAt || String(Date.now());
+    const stamp = `${window.__osirisLastFlightFeed?.updatedAt || ''}|${activeAirLayerKeys().join(',')}`;
     if (!force && stamp === lastStamp) return;
     lastStamp = stamp;
-    const data = allAircraftFeatures();
+    const data = visibleAircraftFeatures();
     map.getSource(SOURCE_ID)?.setData(data);
     updatePanel(data.features);
   }
@@ -254,7 +272,7 @@
     }
   }
 
-  function updatePanel(features = allAircraftFeatures().features) {
+  function updatePanel(features = visibleAircraftFeatures().features) {
     const stats = document.getElementById('aerisStats');
     const list = document.getElementById('aerisList');
     const loc = document.getElementById('aerisLocation');
@@ -285,7 +303,7 @@
         <span class="aeris-main"><b>${escapeHtml(p.callsign || 'LIVE FLIGHT')}</b><small>${escapeHtml(`${p.category || ''} · ${p.model || 'Unknown'} · ${Math.round(p.speed || 0)} kt · ${Math.round(p.alt || 0)} m`)}</small></span>
         <span class="aeris-range">${Math.round(d)} nm</span>
       </button>`;
-    }).join('') || '<div class="aeris-row"><span class="aeris-plane">✈</span><span class="aeris-main"><b>NO LOCAL AIRCRAFT</b><small>WAITING FOR WORKER FEED</small></span><span class="aeris-range">--</span></div>';
+    }).join('') || '<div class="aeris-row"><span class="aeris-plane">✈</span><span class="aeris-main"><b>NO VISIBLE AIRCRAFT</b><small>ENABLE FLIGHTS, PRIVATE, JETS, OR MILITARY LAYERS</small></span><span class="aeris-range">--</span></div>';
   }
 
   function escapeHtml(value) {
@@ -294,7 +312,7 @@
 
   function selectAircraftById(id) {
     const node = aircraftById.get(String(id || '').toLowerCase());
-    if (!node) return;
+    if (!node || !isAirLayerActive(node.layer)) return;
     if (typeof selectNode === 'function') selectNode(node);
     const map = getMap();
     if (map) map.easeTo({ center: [node.lon, node.lat], zoom: Math.max(map.getZoom(), 10.5), pitch: active ? 62 : map.getPitch(), bearing: active ? -18 : map.getBearing(), duration: 420 });
@@ -316,17 +334,23 @@
     map.on('style.load', () => setTimeout(() => updateAircraftSource(true), 120));
   }
 
+  function patchLayerStatus() {
+    if (typeof updateLayerStatus !== 'function' || updateLayerStatus.__osirisAerisPatched) return;
+    const originalUpdateLayerStatus = updateLayerStatus;
+    updateLayerStatus = function osirisAerisUpdateLayerStatus(...args) {
+      const result = originalUpdateLayerStatus.apply(this, args);
+      window.setTimeout(() => updateAircraftSource(true), 0);
+      return result;
+    };
+    updateLayerStatus.__osirisAerisPatched = true;
+  }
+
   function setAerisMode(next) {
     active = !!next;
     document.body.classList.toggle('osiris-aeris-mode', active);
     document.getElementById('aerisModeToggle')?.classList.toggle('active', active);
     const map = getMap();
     if (active) {
-      if (typeof model !== 'undefined' && model.activeLayers) {
-        for (const key of AIR_LAYERS) model.activeLayers[key] = true;
-        model.activePreset = 'custom';
-        if (typeof updateLayerStatus === 'function') updateLayerStatus();
-      }
       if (typeof window.__osirisSetProjection === 'function') window.__osirisSetProjection('mercator');
       try { map?.dragRotate?.enable?.(); } catch {}
       try { map?.touchPitch?.enable?.(); } catch {}
@@ -337,6 +361,7 @@
       try { map.touchPitch?.disable?.(); } catch {}
       map.easeTo({ pitch: 0, bearing: 0, duration: 420 });
     }
+    updateAircraftSource(true);
     updatePanel();
   }
 
@@ -348,6 +373,7 @@
     installed = true;
     window.__osirisSetAerisMode = setAerisMode;
     window.__osirisRefreshAerisAircraft = () => updateAircraftSource(true);
+    patchLayerStatus();
     bindMapClicks();
     updateAircraftSource(true);
     window.setInterval(() => updateAircraftSource(false), 2_000);
