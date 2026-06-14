@@ -71,12 +71,12 @@
     const style = document.createElement('style');
     style.id = 'satelliteToggleStyles';
     style.textContent = `
-      .satellite-toggle{position:fixed;right:max(14px,env(safe-area-inset-right));top:calc(max(14px,env(safe-area-inset-top)) + 78px);z-index:520;width:48px;height:48px;border:1px solid rgba(215,183,57,.42);border-radius:16px;background:rgba(5,7,17,.70);backdrop-filter:blur(16px);color:#f5d96b;box-shadow:0 12px 34px rgba(0,0,0,.46),inset 0 0 18px rgba(215,183,57,.08);font:900 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.13em;display:grid;place-items:center;}
+      .satellite-toggle{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:calc(max(14px,env(safe-area-inset-bottom)) + 82px);z-index:520;width:52px;height:52px;border:1px solid rgba(215,183,57,.42);border-radius:18px;background:rgba(5,7,17,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#f5d96b;box-shadow:0 12px 34px rgba(0,0,0,.46),inset 0 0 18px rgba(215,183,57,.08);font:900 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.13em;display:grid;place-items:center;touch-action:manipulation;}
       .satellite-toggle.active{background:rgba(215,183,57,.24);border-color:rgba(245,217,107,.88);color:#fff;text-shadow:0 0 10px rgba(245,217,107,.76);}
       .satellite-toggle:active{transform:scale(.96);}
       body.osiris-satellite-mode.osiris-primary-map.osiris-map-ready .space-vignette{background:linear-gradient(180deg,rgba(2,3,10,.26),rgba(2,3,10,.00) 22%,rgba(2,3,10,.00) 74%,rgba(2,3,10,.30))!important;}
       body.osiris-satellite-mode.osiris-primary-map.osiris-map-ready .scan-lines{opacity:.025!important;}
-      @media(max-width:760px){.satellite-toggle{top:calc(max(10px,env(safe-area-inset-top)) + 88px);right:12px;width:44px;height:44px;border-radius:15px;}}
+      @media(max-width:760px){.satellite-toggle{left:max(12px,env(safe-area-inset-left));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 78px);width:48px;height:48px;border-radius:16px;}}
     `;
     document.head.appendChild(style);
   }
