@@ -153,9 +153,18 @@ function popupHtml(f: DeckFlight) {
   </div>`;
 }
 
+function isOverlaySafeMap(map: maplibregl.Map) {
+  try {
+    return typeof map.isStyleLoaded === 'function' ? map.isStyleLoaded() : true;
+  } catch {
+    return false;
+  }
+}
+
 export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, projection }: AerisDeckFlightOverlayProps) {
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const [trailVersion, setTrailVersion] = useState(0);
+  const [overlayFailed, setOverlayFailed] = useState(false);
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const trailsRef = useRef<Map<string, TrailRecord>>(new Map());
@@ -163,12 +172,12 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
   useEffect(() => subscribeOsirisMap(setMap), []);
 
   const deckFlights = useMemo(() => {
-    if (!enabled || activeLayers.aeris_deck === false) return [];
+    if (!enabled || overlayFailed || activeLayers.aeris_deck === false) return [];
     return collectFlights(data, activeLayers);
-  }, [data, activeLayers, enabled]);
+  }, [data, activeLayers, enabled, overlayFailed]);
 
   useEffect(() => {
-    if (!enabled || activeLayers.aeris_deck === false) {
+    if (!enabled || overlayFailed || activeLayers.aeris_deck === false) {
       trailsRef.current.clear();
       setTrailVersion(v => v + 1);
       return;
@@ -202,7 +211,7 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
     }
 
     setTrailVersion(v => v + 1);
-  }, [deckFlights, enabled, activeLayers.aeris_deck]);
+  }, [deckFlights, enabled, overlayFailed, activeLayers.aeris_deck]);
 
   const trailData = useMemo(
     () => Array.from(trailsRef.current.values()).filter(trail => trail.path.length > 1),
@@ -229,27 +238,39 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
   }, [map, projection]);
 
   useEffect(() => {
-    if (!map || !enabled) return;
+    if (!map || !enabled || overlayFailed) return;
+    if (!isOverlaySafeMap(map)) return;
 
-    const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
-    overlayRef.current = overlay;
-    (map as any).addControl(overlay as any);
+    let overlay: MapboxOverlay | null = null;
+
+    try {
+      overlay = new MapboxOverlay({ interleaved: false, layers: [] });
+      (map as any).addControl(overlay as any);
+      overlayRef.current = overlay;
+      setOverlayFailed(false);
+    } catch (error) {
+      console.warn('[OSIRIS] Aeris Deck.gl overlay disabled:', error);
+      overlayRef.current = null;
+      overlay?.finalize();
+      setOverlayFailed(true);
+      return;
+    }
 
     return () => {
       popupRef.current?.remove();
       popupRef.current = null;
-      overlay.setProps({ layers: [] });
       try {
-        (map as any).removeControl(overlay as any);
+        overlay?.setProps({ layers: [] });
+        if (overlay) (map as any).removeControl(overlay as any);
       } catch {
-        overlay.finalize();
+        overlay?.finalize();
       }
       overlayRef.current = null;
     };
-  }, [map, enabled]);
+  }, [map, enabled, overlayFailed]);
 
   const layers = useMemo(() => {
-    if (!enabled || activeLayers.aeris_deck === false) return [];
+    if (!enabled || overlayFailed || activeLayers.aeris_deck === false) return [];
 
     const labelFlights = deckFlights
       .filter(f => f.deckCategory === 'military' || f.deckCategory === 'jet')
@@ -319,10 +340,17 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
         parameters: { depthTest: false },
       }),
     ];
-  }, [activeLayers.aeris_deck, deckFlights, enabled, map, trailData]);
+  }, [activeLayers.aeris_deck, deckFlights, enabled, map, overlayFailed, trailData]);
 
   useEffect(() => {
-    overlayRef.current?.setProps({ layers });
+    if (!overlayRef.current) return;
+
+    try {
+      overlayRef.current.setProps({ layers });
+    } catch (error) {
+      console.warn('[OSIRIS] Aeris layer update failed:', error);
+      setOverlayFailed(true);
+    }
   }, [layers]);
 
   return null;
