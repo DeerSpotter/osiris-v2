@@ -9,7 +9,7 @@ import {
   findCityByCode,
 } from "@/lib/city-routing";
 
-const siteUrl = "https://aeris.edbn.me";
+const siteUrl = "https://deerspotter.github.io/osiris-v2/aeris";
 
 /** IATA codes shown in the UI's city switcher - pre-rendered at build time. */
 const PRESET_IATAS = CITIES.map((c) => c.iata.toLowerCase());
@@ -18,8 +18,8 @@ export async function generateStaticParams() {
   return PRESET_IATAS.map((code) => ({ code }));
 }
 
-/** Opt arbitrary (non-preset) IATAs into dynamic rendering on first request. */
-export const dynamicParams = true;
+/** GitHub Pages static export can only serve pre-rendered city routes. */
+export const dynamicParams = false;
 
 export async function generateMetadata({
   params,
@@ -56,7 +56,7 @@ export async function generateMetadata({
       `${iataUpper} ADS-B`,
       `3D flight tracker ${city.name}`,
     ],
-    alternates: { canonical: canonicalPath },
+    alternates: { canonical: `${siteUrl}${canonicalPath}` },
     openGraph: {
       type: "website",
       locale: "en_US",
