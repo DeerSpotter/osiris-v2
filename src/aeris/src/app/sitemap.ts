@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
 import { CITIES } from "@/lib/cities";
 
-const siteUrl = "https://aeris.edbn.me";
+export const dynamic = "force-static";
+
+const siteUrl = "https://deerspotter.github.io/osiris-v2/aeris";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
