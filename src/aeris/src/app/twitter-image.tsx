@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+export const dynamic = "force-static";
 export const alt = "Aeris - Real-Time 3D Flight Tracking";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -140,7 +141,7 @@ export default async function Image() {
           border: "1px solid rgba(255,255,255,0.2)",
         }}
       >
-        aeris.edbn.me
+        deerspotter.github.io/osiris-v2/aeris
       </div>
     </div>,
     { ...size },
