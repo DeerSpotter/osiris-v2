@@ -25,45 +25,46 @@ export interface FlightApiFetchResult {
   source?: string;
 }
 
-// ── Circuit Breaker ────────────────────────────────────────────────────
-//
-// Prevents hammering a dead provider. After 3 consecutive non-abort,
-// non-rate-limit failures the circuit OPENS - the tier is skipped for a
-// cooldown window. After the window elapses the state transitions to
-// HALF-OPEN and a single probe request is allowed through:
-//   • probe succeeds → CLOSED (reset)
-//   • probe fails    → OPEN (cooldown doubles, capped at 5 min)
-//
-// What counts as a failure:
-//   ✓ Timeout, HTTP 5xx, non-JSON response, network error
-//   ✗ AbortError (tab switch / navigation)
-//   ✗ 429 rate-limit (server is alive, handled separately)
-// ────────────────────────────────────────────────────────────────────────
-
 export type CircuitState = "closed" | "open" | "half-open";
 
 interface TierCircuit {
   state: CircuitState;
   failures: number;
-  /** Timestamp after which OPEN → HALF-OPEN */
   openUntil: number;
 }
 
+interface NamedTier {
+  id: string;
+  fn: () => Promise<FlightState[]>;
+}
+
 const CIRCUIT_FAILURE_THRESHOLD = 3;
-const CIRCUIT_BASE_COOLDOWN_MS = 60_000; // 60 s
-const CIRCUIT_MAX_COOLDOWN_MS = 300_000; // 5 min
+const CIRCUIT_BASE_COOLDOWN_MS = 60_000;
+const CIRCUIT_MAX_COOLDOWN_MS = 300_000;
+const PROXY_TIMEOUT_MS = 8_000;
+const STICKY_WINDOW_MS = 60_000;
+const WORKER_PROXY_BASE =
+  process.env.NEXT_PUBLIC_OSIRIS_FLIGHT_PROXY ||
+  "https://osiris-v2.spotterdeer.workers.dev";
 
 const circuits = new Map<string, TierCircuit>();
+let stickySource: string | null = null;
+let stickyUntil = 0;
+let onlineListenerRegistered = false;
+
+if (typeof window !== "undefined" && !onlineListenerRegistered) {
+  onlineListenerRegistered = true;
+  window.addEventListener("online", resetAllCircuits);
+}
 
 function shouldSkipTier(tierId: string): boolean {
-  const c = circuits.get(tierId);
-  if (!c || c.state === "closed") return false;
-  if (c.state === "open" && Date.now() >= c.openUntil) {
-    // Cooldown expired - allow one probe
-    c.state = "half-open";
+  const circuit = circuits.get(tierId);
+  if (!circuit || circuit.state === "closed") return false;
+  if (circuit.state === "open" && Date.now() >= circuit.openUntil) {
+    circuit.state = "half-open";
     return false;
   }
-  return c.state === "open";
+  return circuit.state === "open";
 }
 
 function recordSuccess(tierId: string): void {
@@ -71,86 +72,68 @@ function recordSuccess(tierId: string): void {
 }
 
 function recordFailure(tierId: string): void {
-  const c = circuits.get(tierId) ?? {
+  const circuit = circuits.get(tierId) ?? {
     state: "closed" as CircuitState,
     failures: 0,
     openUntil: 0,
   };
-  c.failures++;
-  if (c.failures >= CIRCUIT_FAILURE_THRESHOLD) {
-    // Cooldown: 60s → 120s → 240s → 300s …
-    const exponent = c.failures - CIRCUIT_FAILURE_THRESHOLD;
+
+  circuit.failures += 1;
+  if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+    const exponent = circuit.failures - CIRCUIT_FAILURE_THRESHOLD;
     const cooldown = Math.min(
       CIRCUIT_BASE_COOLDOWN_MS * Math.pow(2, exponent),
       CIRCUIT_MAX_COOLDOWN_MS,
     );
-    c.state = "open";
-    c.openUntil = Date.now() + cooldown;
+    circuit.state = "open";
+    circuit.openUntil = Date.now() + cooldown;
   }
-  circuits.set(tierId, c);
+
+  circuits.set(tierId, circuit);
 }
 
-/** Returns true if this error should NOT trip the circuit breaker. */
+function recordStickySuccess(tierId: string): void {
+  stickySource = tierId;
+  stickyUntil = Date.now() + STICKY_WINDOW_MS;
+}
+
 function isNonCircuitError(err: unknown): boolean {
-  // Abort = tab switch / navigation - not a provider failure
   if (err instanceof DOMException && err.name === "AbortError") return true;
-  // 429 = server is alive, just rate-limiting - already handled via rateLimited flag
   const msg =
-    err instanceof Error
-      ? err.message.toLowerCase()
-      : String(err).toLowerCase();
-  if (msg.includes("429") || msg.includes("rate limit")) return true;
-  return false;
+    err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return msg.includes("429") || msg.includes("rate limit");
 }
 
-// ── Circuit State API (for UI consumption) ─────────────────────────────
-
-/** Read the circuit breaker state for a specific tier. */
 export function getCircuitState(tierId: string): {
   state: CircuitState;
   failures: number;
   cooldownRemaining: number;
 } {
-  const c = circuits.get(tierId);
-  if (!c || c.state === "closed")
+  const circuit = circuits.get(tierId);
+  if (!circuit || circuit.state === "closed") {
     return { state: "closed", failures: 0, cooldownRemaining: 0 };
+  }
   return {
-    state: c.state,
-    failures: c.failures,
-    cooldownRemaining: Math.max(0, c.openUntil - Date.now()),
+    state: circuit.state,
+    failures: circuit.failures,
+    cooldownRemaining: Math.max(0, circuit.openUntil - Date.now()),
   };
 }
 
-/** Reset all circuits (e.g. on network reconnect). */
 export function resetAllCircuits(): void {
   circuits.clear();
 }
 
-let _onlineListenerRegistered = false;
-if (typeof window !== "undefined" && !_onlineListenerRegistered) {
-  _onlineListenerRegistered = true;
-  window.addEventListener("online", resetAllCircuits);
-}
-
-// ── Provider Override (dev testing) ────────────────────────────────────
-
 export function getProviderOverride(): ProviderName {
   if (typeof window === "undefined") return "auto";
-  const p = new URLSearchParams(window.location.search)
+  const provider = new URLSearchParams(window.location.search)
     .get("provider")
     ?.toLowerCase();
-  if (p === "airplanes" || p === "adsb" || p === "opensky") return p;
+  if (provider === "airplanes" || provider === "adsb" || provider === "opensky") {
+    return provider;
+  }
   return "auto";
 }
-
-// ── Constants ──────────────────────────────────────────────────────────
-
-const PROXY_TIMEOUT_MS = 8_000;
-const WORKER_PROXY_BASE =
-  process.env.NEXT_PUBLIC_OSIRIS_FLIGHT_PROXY ||
-  "https://osiris-v2.spotterdeer.workers.dev";
-
-// ── Internal Helpers ───────────────────────────────────────────────────
 
 function degreesToNm(degrees: number): number {
   if (!Number.isFinite(degrees) || degrees <= 0) return 150;
@@ -158,9 +141,6 @@ function degreesToNm(degrees: number): number {
   return Math.min(Math.max(nm, 1), MAX_RADIUS_NM);
 }
 
-/**
- * Runs `fn` with a timeout. External abort signals are propagated.
- */
 async function withTimeout<T>(
   fn: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
@@ -176,9 +156,7 @@ async function withTimeout<T>(
   try {
     return await fn(controller.signal);
   } catch (err) {
-    // If the external signal fired, surface as AbortError
-    if (externalSignal?.aborted)
-      throw new DOMException("Aborted", "AbortError");
+    if (externalSignal?.aborted) throw new DOMException("Aborted", "AbortError");
     throw err;
   } finally {
     clearTimeout(timer);
@@ -197,12 +175,6 @@ function validateReadsb(payload: unknown): ReadsbApiResponse {
   return payload as ReadsbApiResponse;
 }
 
-// ── Tier 1 / Tier 2: readsb via Worker proxy ──────────────────────────
-//
-// Static GitHub Pages cannot run Next route handlers, so Aeris uses the
-// OSIRIS Cloudflare Worker proxy. The Worker accepts the same readsb path
-// contract: ?path=/point/lat/lon/radius&provider=adsb|airplanes.
-
 async function fetchViaProxy(
   path: string,
   provider: "adsb" | "airplanes" = "adsb",
@@ -215,8 +187,8 @@ async function fetchViaProxy(
 
       if (!res.ok) throw new Error(`${provider} proxy ${res.status}`);
 
-      const ct = res.headers.get("content-type") ?? "";
-      if (ct.includes("text/html") || ct.includes("text/xml")) {
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("text/html") || contentType.includes("text/xml")) {
         throw new Error(`${provider} proxy returned non-JSON response`);
       }
 
@@ -226,8 +198,6 @@ async function fetchViaProxy(
     signal,
   );
 }
-
-// ── Tier 3: OpenSky direct ─────────────────────────────────────────────
 
 async function fetchFromOpenSkyPoint(
   lat: number,
@@ -241,26 +211,12 @@ async function fetchFromOpenSkyPoint(
   return result.flights;
 }
 
-// ── Fallback Engine ────────────────────────────────────────────────────
-
-interface NamedTier {
-  id: string;
-  fn: () => Promise<FlightState[]>;
-}
-
-// ── Sticky Source ──────────────────────────────────────────────────────
-//
-// After a provider succeeds, prefer it for STICKY_WINDOW_MS before
-// trying higher-priority tiers again. This prevents unnecessary
-// flip-flopping between providers when both are healthy.
-
-const STICKY_WINDOW_MS = 60_000; // 60 s
-let stickySource: string | null = null;
-let stickyUntil = 0;
-
-function recordStickySuccess(tierId: string): void {
-  stickySource = tierId;
-  stickyUntil = Date.now() + STICKY_WINDOW_MS;
+async function fetchFromOpenSkyHex(
+  icao24: string,
+  signal?: AbortSignal,
+): Promise<FlightState[]> {
+  const result = await openskyFetchByIcao24(icao24, signal);
+  return result.flight ? [result.flight] : [];
 }
 
 async function runFallbackChain(
@@ -271,13 +227,11 @@ async function runFallbackChain(
   let allSkipped = true;
   let lastTriedId: string | undefined;
 
-  // If we have a sticky source and it's still within the window,
-  // try it first before the normal tier order.
   const orderedTiers =
     stickySource && Date.now() < stickyUntil
       ? [
-          ...tiers.filter((t) => t.id === stickySource),
-          ...tiers.filter((t) => t.id !== stickySource),
+          ...tiers.filter((tier) => tier.id === stickySource),
+          ...tiers.filter((tier) => tier.id !== stickySource),
         ]
       : tiers;
 
@@ -294,16 +248,12 @@ async function runFallbackChain(
     } catch (err) {
       if (signal?.aborted) throw err;
       if (err instanceof DOMException && err.name === "AbortError") throw err;
-
       if (!isNonCircuitError(err)) recordFailure(id);
-
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
-  if (allSkipped) {
-    return { flights: [], rateLimited: false, source: "none" };
-  }
+  if (allSkipped) return { flights: [], rateLimited: false, source: "none" };
 
   const msg = lastError?.message?.toLowerCase() ?? "";
   if (msg.includes("429") || msg.includes("rate limit")) {
@@ -313,12 +263,6 @@ async function runFallbackChain(
   throw lastError ?? new Error("All flight providers failed");
 }
 
-// ── Public API ─────────────────────────────────────────────────────────
-
-/**
- * Fetch flights within a radius of a geographic point.
- * Uses the fallback chain: adsb.lol proxy → airplanes.live proxy → OpenSky.
- */
 export async function fetchFlightsByPoint(
   lat: number,
   lon: number,
@@ -334,41 +278,25 @@ export async function fetchFlightsByPoint(
   const cLat = Math.max(-90, Math.min(90, lat));
   const cLon = Math.max(-180, Math.min(180, lon));
   const readsbPath = `/point/${cLat.toFixed(4)}/${cLon.toFixed(4)}/${radiusNm}`;
-
   const override = getProviderOverride();
   const tiers: NamedTier[] = [];
 
   if (override === "adsb" || override === "auto") {
-    // adsb.lol via proxy - primary data source
     tiers.push({
       id: "adsb",
-      fn: async () => {
-        const resp = await fetchViaProxy(readsbPath, "adsb", signal);
-        return parseAircraftList(resp.ac, options);
-      },
+      fn: async () => parseAircraftList((await fetchViaProxy(readsbPath, "adsb", signal)).ac, options),
     });
   }
 
   if (override === "airplanes" || override === "auto") {
-    // airplanes.live via proxy - secondary fallback
     tiers.push({
       id: "airplanes",
-      fn: async () => {
-        const resp = await fetchViaProxy(readsbPath, "airplanes", signal);
-        return parseAircraftList(resp.ac, options);
-      },
+      fn: async () =>
+        parseAircraftList((await fetchViaProxy(readsbPath, "airplanes", signal)).ac, options),
     });
   }
 
-  if (override === "auto") {
-    // OpenSky - last resort
-    tiers.push({
-      id: "opensky",
-      fn: () => fetchFromOpenSkyPoint(cLat, cLon, radiusDeg, signal),
-    });
-  }
-
-  if (override === "opensky") {
+  if (override === "auto" || override === "opensky") {
     tiers.push({
       id: "opensky",
       fn: () => fetchFromOpenSkyPoint(cLat, cLon, radiusDeg, signal),
@@ -378,18 +306,12 @@ export async function fetchFlightsByPoint(
   return runFallbackChain(tiers, signal);
 }
 
-/**
- * Fetch a single aircraft by ICAO24 hex address.
- * Uses the fallback chain: adsb.lol proxy → airplanes.live proxy → OpenSky.
- */
 export async function fetchFlightByHex(
   icao24: string,
   signal?: AbortSignal,
 ): Promise<{ flight: FlightState | null }> {
   const normalized = icao24.trim().toLowerCase();
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) {
-    return { flight: null };
-  }
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return { flight: null };
 
   const parseOpts: ParseOptions = {
     includeGround: true,
@@ -400,38 +322,24 @@ export async function fetchFlightByHex(
   const tiers: NamedTier[] = [];
 
   if (override === "adsb" || override === "auto") {
-    // adsb.lol via proxy - primary data source
     tiers.push({
       id: "adsb",
-      fn: async () => {
-        const resp = await fetchViaProxy(readsbPath, "adsb", signal);
-        return parseAircraftList(resp.ac, parseOpts);
-      },
+      fn: async () => parseAircraftList((await fetchViaProxy(readsbPath, "adsb", signal)).ac, parseOpts),
     });
   }
 
   if (override === "airplanes" || override === "auto") {
-    // airplanes.live via proxy - secondary fallback
     tiers.push({
       id: "airplanes",
-      fn: async () => {
-        const resp = await fetchViaProxy(readsbPath, "airplanes", signal);
-        return parseAircraftList(resp.ac, parseOpts);
-      },
+      fn: async () =>
+        parseAircraftList((await fetchViaProxy(readsbPath, "airplanes", signal)).ac, parseOpts),
     });
   }
 
-  if (override === "auto") {
+  if (override === "auto" || override === "opensky") {
     tiers.push({
       id: "opensky",
-      fn: () => openskyFetchByIcao24(normalized, signal),
-    });
-  }
-
-  if (override === "opensky") {
-    tiers.push({
-      id: "opensky",
-      fn: () => openskyFetchByIcao24(normalized, signal),
+      fn: () => fetchFromOpenSkyHex(normalized, signal),
     });
   }
 
@@ -457,25 +365,16 @@ export async function fetchFlightByCallsign(
   if (override === "adsb" || override === "auto") {
     tiers.push({
       id: "adsb",
-      fn: async () => {
-        const resp = await fetchViaProxy(readsbPath, "adsb", signal);
-        return parseAircraftList(resp.ac, parseOpts);
-      },
+      fn: async () => parseAircraftList((await fetchViaProxy(readsbPath, "adsb", signal)).ac, parseOpts),
     });
   }
 
   if (override === "airplanes" || override === "auto") {
     tiers.push({
       id: "airplanes",
-      fn: async () => {
-        const resp = await fetchViaProxy(readsbPath, "airplanes", signal);
-        return parseAircraftList(resp.ac, parseOpts);
-      },
+      fn: async () =>
+        parseAircraftList((await fetchViaProxy(readsbPath, "airplanes", signal)).ac, parseOpts),
     });
-  }
-
-  if (override === "auto") {
-    // OpenSky does not support callsign lookup efficiently here.
   }
 
   const result = await runFallbackChain(tiers, signal);
