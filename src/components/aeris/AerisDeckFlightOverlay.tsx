@@ -168,16 +168,26 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const trailsRef = useRef<Map<string, TrailRecord>>(new Map());
+  const aerisActive = enabled && activeLayers.aeris_deck !== false;
 
   useEffect(() => subscribeOsirisMap(setMap), []);
 
+  useEffect(() => {
+    if (aerisActive) setOverlayFailed(false);
+  }, [aerisActive, map]);
+
   const deckFlights = useMemo(() => {
-    if (!enabled || overlayFailed || activeLayers.aeris_deck === false) return [];
-    return collectFlights(data, activeLayers);
-  }, [data, activeLayers, enabled, overlayFailed]);
+    if (!aerisActive || overlayFailed) return [];
+    try {
+      return collectFlights(data, activeLayers);
+    } catch (error) {
+      console.warn('[OSIRIS] Aeris flight collection failed:', error);
+      return [];
+    }
+  }, [data, activeLayers, aerisActive, overlayFailed]);
 
   useEffect(() => {
-    if (!enabled || overlayFailed || activeLayers.aeris_deck === false) {
+    if (!aerisActive || overlayFailed) {
       trailsRef.current.clear();
       setTrailVersion(v => v + 1);
       return;
@@ -211,7 +221,7 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
     }
 
     setTrailVersion(v => v + 1);
-  }, [deckFlights, enabled, overlayFailed, activeLayers.aeris_deck]);
+  }, [deckFlights, aerisActive, overlayFailed]);
 
   const trailData = useMemo(
     () => Array.from(trailsRef.current.values()).filter(trail => trail.path.length > 1),
@@ -238,16 +248,23 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
   }, [map, projection]);
 
   useEffect(() => {
-    if (!map || !enabled || overlayFailed) return;
+    if (!map || !aerisActive || overlayFailed) return;
     if (!isOverlaySafeMap(map)) return;
 
     let overlay: MapboxOverlay | null = null;
 
     try {
-      overlay = new MapboxOverlay({ interleaved: false, layers: [] });
+      overlay = new MapboxOverlay({
+        interleaved: false,
+        layers: [],
+        onError: (error: Error) => {
+          console.warn('[OSIRIS] Aeris Deck.gl runtime error:', error);
+          setOverlayFailed(true);
+          return true;
+        },
+      } as any);
       (map as any).addControl(overlay as any);
       overlayRef.current = overlay;
-      setOverlayFailed(false);
     } catch (error) {
       console.warn('[OSIRIS] Aeris Deck.gl overlay disabled:', error);
       overlayRef.current = null;
@@ -267,80 +284,85 @@ export default function AerisDeckFlightOverlay({ data, activeLayers, enabled, pr
       }
       overlayRef.current = null;
     };
-  }, [map, enabled, overlayFailed]);
+  }, [map, aerisActive, overlayFailed]);
 
   const layers = useMemo(() => {
-    if (!enabled || overlayFailed || activeLayers.aeris_deck === false) return [];
+    if (!aerisActive || overlayFailed) return [];
 
-    const labelFlights = deckFlights
-      .filter(f => f.deckCategory === 'military' || f.deckCategory === 'jet')
-      .slice(0, 350);
+    try {
+      const labelFlights = deckFlights
+        .filter(f => f.deckCategory === 'military' || f.deckCategory === 'jet')
+        .slice(0, 350);
 
-    return [
-      new PathLayer<TrailRecord>({
-        id: 'aeris-flight-trails',
-        data: trailData,
-        getPath: d => d.path,
-        getColor: d => [d.color[0], d.color[1], d.color[2], 145],
-        getWidth: d => (d.deckCategory === 'military' ? 2.4 : 1.4),
-        widthMinPixels: 1,
-        widthMaxPixels: 5,
-        jointRounded: true,
-        capRounded: true,
-        parameters: { depthTest: false },
-      }),
-      new ScatterplotLayer<DeckFlight>({
-        id: 'aeris-flight-shadows',
-        data: deckFlights,
-        getPosition: d => [d.lng, d.lat, 0],
-        getRadius: d => (d.deckCategory === 'military' ? 9000 : 6000),
-        radiusUnits: 'meters',
-        radiusMinPixels: 1.5,
-        radiusMaxPixels: 10,
-        getFillColor: [0, 0, 0, 95],
-        stroked: false,
-        filled: true,
-        parameters: { depthTest: false },
-      }),
-      new IconLayer<DeckFlight>({
-        id: 'aeris-aircraft-icons',
-        data: deckFlights,
-        pickable: true,
-        iconAtlas: AIRCRAFT_ATLAS,
-        iconMapping: ICON_MAPPING,
-        getIcon: () => 'plane',
-        getPosition: d => [d.lng, d.lat, d.altitudeMeters],
-        getAngle: d => 360 - (d.heading ?? 0),
-        getSize: d => (d.deckCategory === 'military' ? 34 : d.deckCategory === 'jet' ? 31 : 27),
-        sizeUnits: 'pixels',
-        getColor: d => d.color,
-        onClick: (info: PickingInfo<DeckFlight>) => {
-          if (!info.object || !map) return false;
-          popupRef.current?.remove();
-          popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '360px', offset: 16 })
-            .setLngLat([info.object.lng, info.object.lat])
-            .setHTML(popupHtml(info.object))
-            .addTo(map);
-          return true;
-        },
-        parameters: { depthTest: false },
-      }),
-      new TextLayer<DeckFlight>({
-        id: 'aeris-aircraft-labels',
-        data: labelFlights,
-        getPosition: d => [d.lng, d.lat, d.altitudeMeters],
-        getText: d => (d.callsign || d.icao24 || '').toString().trim(),
-        getSize: 10,
-        getColor: d => [d.color[0], d.color[1], d.color[2], 210],
-        getPixelOffset: [0, -24],
-        background: true,
-        getBackgroundColor: [0, 0, 0, 150],
-        backgroundPadding: [4, 2],
-        fontFamily: 'JetBrains Mono, monospace',
-        parameters: { depthTest: false },
-      }),
-    ];
-  }, [activeLayers.aeris_deck, deckFlights, enabled, map, overlayFailed, trailData]);
+      return [
+        new PathLayer<TrailRecord>({
+          id: 'aeris-flight-trails',
+          data: trailData,
+          getPath: d => d.path,
+          getColor: d => [d.color[0], d.color[1], d.color[2], 145],
+          getWidth: d => (d.deckCategory === 'military' ? 2.4 : 1.4),
+          widthMinPixels: 1,
+          widthMaxPixels: 5,
+          jointRounded: true,
+          capRounded: true,
+          parameters: { depthTest: false },
+        }),
+        new ScatterplotLayer<DeckFlight>({
+          id: 'aeris-flight-shadows',
+          data: deckFlights,
+          getPosition: d => [d.lng, d.lat, 0],
+          getRadius: d => (d.deckCategory === 'military' ? 9000 : 6000),
+          radiusUnits: 'meters',
+          radiusMinPixels: 1.5,
+          radiusMaxPixels: 10,
+          getFillColor: [0, 0, 0, 95],
+          stroked: false,
+          filled: true,
+          parameters: { depthTest: false },
+        }),
+        new IconLayer<DeckFlight>({
+          id: 'aeris-aircraft-icons',
+          data: deckFlights,
+          pickable: true,
+          iconAtlas: AIRCRAFT_ATLAS,
+          iconMapping: ICON_MAPPING,
+          getIcon: () => 'plane',
+          getPosition: d => [d.lng, d.lat, d.altitudeMeters],
+          getAngle: d => 360 - (d.heading ?? 0),
+          getSize: d => (d.deckCategory === 'military' ? 34 : d.deckCategory === 'jet' ? 31 : 27),
+          sizeUnits: 'pixels',
+          getColor: d => d.color,
+          onClick: (info: PickingInfo<DeckFlight>) => {
+            if (!info.object || !map) return false;
+            popupRef.current?.remove();
+            popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '360px', offset: 16 })
+              .setLngLat([info.object.lng, info.object.lat])
+              .setHTML(popupHtml(info.object))
+              .addTo(map);
+            return true;
+          },
+          parameters: { depthTest: false },
+        }),
+        new TextLayer<DeckFlight>({
+          id: 'aeris-aircraft-labels',
+          data: labelFlights,
+          getPosition: d => [d.lng, d.lat, d.altitudeMeters],
+          getText: d => (d.callsign || d.icao24 || '').toString().trim(),
+          getSize: 10,
+          getColor: d => [d.color[0], d.color[1], d.color[2], 210],
+          getPixelOffset: [0, -24],
+          background: true,
+          getBackgroundColor: [0, 0, 0, 150],
+          backgroundPadding: [4, 2],
+          fontFamily: 'JetBrains Mono, monospace',
+          parameters: { depthTest: false },
+        }),
+      ];
+    } catch (error) {
+      console.warn('[OSIRIS] Aeris layer creation failed:', error);
+      return [];
+    }
+  }, [aerisActive, deckFlights, map, overlayFailed, trailData]);
 
   useEffect(() => {
     if (!overlayRef.current) return;
