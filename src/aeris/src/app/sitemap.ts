@@ -4,19 +4,19 @@ import { CITIES } from "@/lib/cities";
 export const dynamic = "force-static";
 
 const siteUrl = "https://deerspotter.github.io/osiris-v2/aeris";
+const lastModified = new Date("2026-06-15T00:00:00.000Z");
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
   return [
     {
       url: siteUrl,
-      lastModified: now,
+      lastModified,
       changeFrequency: "daily",
       priority: 1,
     },
     ...CITIES.map((city) => ({
       url: `${siteUrl}/city/${city.iata.toLowerCase()}`,
-      lastModified: now,
+      lastModified,
       changeFrequency: "daily" as const,
       priority: 0.8,
     })),
