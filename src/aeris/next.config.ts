@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 import { getDirectTraceProviderPolicies } from "./src/lib/trails/providers";
 
 const isDev = process.env.NODE_ENV === "development";
+const aerisBasePath = process.env.NEXT_PUBLIC_AERIS_BASE_PATH || "";
 const directTraceConnectSrc = Array.from(
   new Set(
     getDirectTraceProviderPolicies().map(
@@ -24,7 +25,7 @@ const cspHeader = `
   style-src 'self' 'unsafe-inline';
   img-src 'self' blob: data: https: ;
   font-src 'self';
-  connect-src 'self' data: https://opensky-network.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://server.arcgisonline.com https://s3.amazonaws.com https://tile.opentopomap.org https://www.google-analytics.com https://www.googletagmanager.com https://api.github.com https://api.airplanes.live https://api.adsb.lol https://res.cloudinary.com https://api.rainviewer.com ${directTraceConnectSrc};
+  connect-src 'self' data: https://opensky-network.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://server.arcgisonline.com https://s3.amazonaws.com https://tile.opentopomap.org https://www.google-analytics.com https://www.googletagmanager.com https://api.github.com https://api.airplanes.live https://api.adsb.lol https://res.cloudinary.com https://api.rainviewer.com https://osiris-v2.spotterdeer.workers.dev ${directTraceConnectSrc};
   worker-src 'self' blob:;
   child-src blob:;
   object-src 'none';
@@ -35,6 +36,10 @@ const cspHeader = `
 `;
 
 const nextConfig: NextConfig = {
+  output: "export",
+  trailingSlash: true,
+  basePath: aerisBasePath || undefined,
+  assetPrefix: aerisBasePath || undefined,
   transpilePackages: [
     "@deck.gl/core",
     "@deck.gl/layers",
@@ -48,6 +53,7 @@ const nextConfig: NextConfig = {
     "@luma.gl/webgl",
   ],
   images: {
+    unoptimized: true,
     remotePatterns: [
       { hostname: "a.basemaps.cartocdn.com" },
       { hostname: "server.arcgisonline.com" },
@@ -77,10 +83,6 @@ const nextConfig: NextConfig = {
               "camera=(), microphone=(), geolocation=(self), interest-cohort=()",
           },
         ],
-      },
-      {
-        source: "/api/((?!routes(?:/|$)).*)",
-        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
       },
       {
         source: "/models/:path*",
