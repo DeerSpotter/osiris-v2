@@ -1,11 +1,11 @@
 'use strict';
 
 (function () {
-  const VERSION = '20260615-local-aeris-launcher-deck-renderer';
+  const VERSION = '20260615-local-aeris-launcher-deck-renderer-v2';
   const RETRY_MS = 180;
   const MAX_RETRIES = 20;
   const ASSET_SCRIPT_ID = 'osirisAerisAircraftAssetsScript';
-  const ASSET_SCRIPT_SRC = './osiris-aeris-aircraft-assets.js?v=20260615-aeris-deck-iconlayer';
+  const ASSET_SCRIPT_SRC = './osiris-aeris-aircraft-assets.js?v=20260615-aeris-deck-iconlayer-v2';
 
   function loadAircraftAssets() {
     if (document.getElementById(ASSET_SCRIPT_ID)) {
