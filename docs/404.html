@@ -6,11 +6,23 @@
   <meta name="robots" content="noindex">
   <title>Opening OSIRIS</title>
   <script>
-    window.location.replace('./' + window.location.search + window.location.hash);
+    (function () {
+      var path = window.location.pathname || '';
+      var match = path.match(/\/osiris-v2\/aeris\/city\/([A-Za-z]{3})\/?$/);
+      if (match) {
+        window.location.replace('/osiris-v2/aeris/?city=' + encodeURIComponent(match[1].toLowerCase()) + window.location.hash);
+        return;
+      }
+      if (path.indexOf('/osiris-v2/aeris/') === 0) {
+        window.location.replace('/osiris-v2/aeris/' + window.location.search + window.location.hash);
+        return;
+      }
+      window.location.replace('/osiris-v2/docs/' + window.location.search + window.location.hash);
+    })();
   </script>
 </head>
 <body>
   <p>Opening OSIRIS…</p>
-  <p><a href="./">Open OSIRIS</a></p>
+  <p><a href="/osiris-v2/docs/">Open OSIRIS</a></p>
 </body>
 </html>
