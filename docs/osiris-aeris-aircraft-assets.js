@@ -3,7 +3,7 @@
 (function () {
   const VERSION = '20260615-aeris-deck-iconlayer';
   const DECK_SCRIPT_ID = 'osirisAerisDeckGlScript';
-  const DECK_SCRIPT_SRC = 'https://unpkg.com/deck.gl@9.1.14/dist.min.js';
+  const DECK_SCRIPT_SRC = 'https://unpkg.com/deck.gl@9.2.11/dist.min.js';
   const MAP_SOURCE_ID = 'osiris-aeris-aircraft';
   const MAP_SYMBOL_LAYER_ID = 'osiris-aeris-aircraft-models';
   const DECK_LAYER_ID = 'osiris-aeris-aircraft-deck-icons';
