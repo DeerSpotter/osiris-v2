@@ -9,8 +9,10 @@ export const DEFAULT_CITY_ID = "sfo";
 export const STYLE_STORAGE_KEY = "aeris:mapStyle";
 export const DEFAULT_CITY =
   CITIES.find((c) => c.id === DEFAULT_CITY_ID) ?? CITIES[0];
-export const GITHUB_REPO_URL = "https://github.com/kewonit/aeris";
-export const GITHUB_REPO_API = "https://api.github.com/repos/kewonit/aeris";
+export const GITHUB_REPO_URL = "https://github.com/DeerSpotter/osiris-v2/tree/master/src/aeris";
+export const GITHUB_REPO_API = "https://api.github.com/repos/DeerSpotter/osiris-v2";
+
+const CONFIGURED_BASE_PATH = process.env.NEXT_PUBLIC_AERIS_BASE_PATH ?? "";
 
 export const subscribeNoop = () => () => {};
 
@@ -20,6 +22,53 @@ let _cachedInitialCityKey: string | null = null;
 /** Matches `/city/<3-letter-iata>` (case-insensitive). */
 const CITY_PATH_RE = /^\/city\/([A-Za-z]{3})\/?$/;
 
+function normalizeBasePath(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+export function getAerisBasePath(): string {
+  const configured = normalizeBasePath(CONFIGURED_BASE_PATH);
+  if (configured) return configured;
+
+  if (typeof window !== "undefined") {
+    const pathname = window.location.pathname || "/";
+    const marker = "/aeris";
+    const markerIndex = pathname.toLowerCase().indexOf(marker);
+    if (markerIndex >= 0) {
+      return pathname.slice(0, markerIndex + marker.length).replace(/\/+$/, "");
+    }
+  }
+
+  return "";
+}
+
+function stripAerisBasePath(pathname: string): string {
+  const basePath = getAerisBasePath();
+  if (!basePath) return pathname || "/";
+
+  if (pathname === basePath) return "/";
+  if (pathname.startsWith(`${basePath}/`)) {
+    return pathname.slice(basePath.length) || "/";
+  }
+  return pathname || "/";
+}
+
+function withAerisBasePath(pathname: string): string {
+  const basePath = getAerisBasePath();
+  const cleanPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  if (!basePath) return cleanPath;
+  if (cleanPath === basePath || cleanPath.startsWith(`${basePath}/`)) {
+    return cleanPath;
+  }
+  return `${basePath}${cleanPath}`;
+}
+
+export function buildAerisHref(pathname: string): string {
+  return withAerisBasePath(pathname);
+}
+
 export function resolveInitialCity(): City {
   try {
     const locationKey = `${window.location.pathname}${window.location.search}`;
@@ -27,8 +76,10 @@ export function resolveInitialCity(): City {
       return _cachedInitialCity;
     }
 
-    // New canonical form: /city/<iata>
-    const pathMatch = window.location.pathname.match(CITY_PATH_RE);
+    // New canonical form: /city/<iata>, preserving the deployed Aeris base path
+    // such as /osiris-v2/aeris on GitHub Pages.
+    const appPathname = stripAerisBasePath(window.location.pathname);
+    const pathMatch = appPathname.match(CITY_PATH_RE);
     if (pathMatch) {
       const city = findCityByCode(pathMatch[1]);
       if (city) {
@@ -66,7 +117,7 @@ export function resolveInitialCity(): City {
  * Builds the shareable canonical pathname for a city.
  */
 function cityPathname(city: City): string {
-  return buildCanonicalCityPath(city);
+  return withAerisBasePath(buildCanonicalCityPath(city));
 }
 
 export function syncCityToUrl(city: City): void {
