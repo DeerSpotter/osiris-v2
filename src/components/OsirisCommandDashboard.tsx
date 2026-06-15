@@ -45,7 +45,7 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
   const [mapMode, setMapMode] = useState<CommandMapMode>('globe');
   const [mapStyle, setMapStyle] = useState<CommandMapStyle>('dark');
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
-    aeris_deck: true,
+    aeris_deck: false,
     flights: true,
     private: true,
     jets: true,
@@ -80,6 +80,10 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
 
   const refreshAircraft = () => {
     void flightFeed.refresh();
+  };
+
+  const toggleAerisDeck = () => {
+    setActiveLayers(prev => ({ ...prev, aeris_deck: !prev.aeris_deck }));
   };
 
   const goHome = () => {
@@ -170,7 +174,15 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Aircraft: <b className="text-[#00e5ff]">{flightFeed.total}</b></span>
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Render: <b className={deckOverlayEnabled ? 'text-[#00e676]' : 'text-[#d4af37]'}>{deckOverlayEnabled ? 'Deck.gl' : 'MapLibre'}</b></span>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[9px] uppercase tracking-[0.16em]">
+        <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-[9px] uppercase tracking-[0.16em]">
+          <button
+            onClick={toggleAerisDeck}
+            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 transition ${activeLayers.aeris_deck ? 'border-[#00e676]/30 bg-[#00e676]/10 text-[#00e676]' : 'border-[#d4af37]/25 bg-[#d4af37]/10 text-[#e8e6e0] hover:border-[#d4af37]/50'}`}
+            title="Toggle Aeris Deck.gl aircraft overlay"
+          >
+            <Database size={13} />
+            Aeris
+          </button>
           <button
             onClick={refreshAircraft}
             disabled={!flightLayerEnabled}
@@ -219,6 +231,13 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
           <Radar className="h-5 w-5" />
         </button>
         <div className="h-7 w-px bg-white/10" />
+        <button
+          onClick={toggleAerisDeck}
+          className={`rounded-lg p-3 transition ${activeLayers.aeris_deck ? 'bg-[#00e676]/15 text-[#00e676]' : 'text-[#8fb8c8] hover:bg-white/10'}`}
+          title="Toggle Aeris aircraft overlay"
+        >
+          <Database className="h-5 w-5" />
+        </button>
         <button
           onClick={() => setMapStyle(style => (style === 'dark' ? 'satellite' : 'dark'))}
           className={`rounded-lg p-3 transition ${mapStyle === 'satellite' ? 'bg-[#00e676]/15 text-[#00e676]' : 'text-[#8fb8c8] hover:bg-white/10'}`}
