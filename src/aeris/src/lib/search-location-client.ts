@@ -1,9 +1,9 @@
 // ── Location Search Client ─────────────────────────────────────────────
 //
-// Combines three search sources into a unified interface:
+// Combines search sources into a unified interface:
 //   1. Local airports   (instant, 9000+ entries from airports.ts)
 //   2. Featured cities  (instant, hardcoded popular hubs)
-//   3. Nominatim places (async, global geocoding via /api/geocode proxy)
+//   3. Optional geocoding endpoint when a static-safe proxy is configured
 //
 // All results normalize to a common `SearchLocation` type.
 // ────────────────────────────────────────────────────────────────────────
@@ -11,7 +11,20 @@
 import type { City } from "./cities";
 import { CITIES } from "./cities";
 import { searchAirports, type Airport } from "./airports";
-import type { NominatimResult } from "@/app/api/geocode/route";
+
+// Keep this type local. The GitHub Pages workflow removes src/app/api before
+// static export, so client/shared code must not import types from API routes.
+type NominatimResult = {
+  place_id: number | string;
+  lat: string;
+  lon: string;
+  display_name: string;
+  type?: string;
+  address?: {
+    country?: string;
+    country_code?: string;
+  };
+};
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -155,17 +168,19 @@ export function searchLocalLocations(query: string, limit = 10): LocalSearchResu
 // ── Global Geocode Search ──────────────────────────────────────────────
 
 const GEOCODE_TIMEOUT_MS = 8_000;
+const GEOCODE_ENDPOINT = process.env.NEXT_PUBLIC_AERIS_GEOCODE_ENDPOINT ?? "";
 
 /**
- * Search global places via Nominatim (OpenStreetMap) through our proxy.
- * Results are cached client-side for 5 minutes.
+ * Search global places through an optional static-safe geocode endpoint.
+ * GitHub Pages cannot run Next API routes, so this returns no remote places
+ * unless NEXT_PUBLIC_AERIS_GEOCODE_ENDPOINT is configured at build time.
  */
 export async function searchGeocode(
   query: string,
   signal?: AbortSignal,
 ): Promise<SearchLocation[]> {
   const normalized = query.trim();
-  if (!normalized || normalized.length < 2) return [];
+  if (!normalized || normalized.length < 2 || !GEOCODE_ENDPOINT) return [];
 
   const cached = getGeoCached(normalized);
   if (cached) return cached;
@@ -176,13 +191,13 @@ export async function searchGeocode(
   signal?.addEventListener("abort", onAbort);
 
   try {
-    const res = await fetch(
-      `/api/geocode?q=${encodeURIComponent(normalized)}`,
-      {
-        signal: controller.signal,
-        cache: "no-store",
-      },
-    );
+    const endpoint = new URL(GEOCODE_ENDPOINT);
+    endpoint.searchParams.set("q", normalized);
+
+    const res = await fetch(endpoint.toString(), {
+      signal: controller.signal,
+      cache: "no-store",
+    });
 
     if (!res.ok) return [];
 
