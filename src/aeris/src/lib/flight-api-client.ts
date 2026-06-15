@@ -2,6 +2,7 @@
 //
 // 3-tier fallback: adsb.lol proxy → airplanes.live proxy → OpenSky.
 // Dev/override: ?provider=airplanes|adsb|opensky in the URL.
+// Static Pages builds use the OSIRIS Cloudflare Worker for the readsb proxy.
 // ────────────────────────────────────────────────────────────────────────
 
 import type { FlightState } from "./opensky-types";
@@ -145,6 +146,9 @@ export function getProviderOverride(): ProviderName {
 // ── Constants ──────────────────────────────────────────────────────────
 
 const PROXY_TIMEOUT_MS = 8_000;
+const WORKER_PROXY_BASE =
+  process.env.NEXT_PUBLIC_OSIRIS_FLIGHT_PROXY ||
+  "https://osiris-v2.spotterdeer.workers.dev";
 
 // ── Internal Helpers ───────────────────────────────────────────────────
 
@@ -193,11 +197,11 @@ function validateReadsb(payload: unknown): ReadsbApiResponse {
   return payload as ReadsbApiResponse;
 }
 
-// ── Tier 1 / Tier 2: readsb via server proxy ──────────────────────────
+// ── Tier 1 / Tier 2: readsb via Worker proxy ──────────────────────────
 //
-// Server proxy supports ?provider=adsb|airplanes.
-// Airplanes.live is Tier 1 (richest data: registration, type, description).
-// adsb.lol is Tier 2 (community-run, generous limits).
+// Static GitHub Pages cannot run Next route handlers, so Aeris uses the
+// OSIRIS Cloudflare Worker proxy. The Worker accepts the same readsb path
+// contract: ?path=/point/lat/lon/radius&provider=adsb|airplanes.
 
 async function fetchViaProxy(
   path: string,
@@ -206,7 +210,7 @@ async function fetchViaProxy(
 ): Promise<ReadsbApiResponse> {
   return withTimeout(
     async (innerSignal) => {
-      const url = `/api/flights?path=${encodeURIComponent(path)}&provider=${provider}`;
+      const url = `${WORKER_PROXY_BASE.replace(/\/$/, "")}/flights?path=${encodeURIComponent(path)}&provider=${provider}`;
       const res = await fetch(url, { cache: "no-store", signal: innerSignal });
 
       if (!res.ok) throw new Error(`${provider} proxy ${res.status}`);
@@ -418,44 +422,29 @@ export async function fetchFlightByHex(
   }
 
   if (override === "auto") {
-    // OpenSky - last resort
     tiers.push({
       id: "opensky",
-      fn: async () => {
-        const result = await openskyFetchByIcao24(normalized, signal);
-        return result.flight ? [result.flight] : [];
-      },
+      fn: () => openskyFetchByIcao24(normalized, signal),
     });
   }
 
   if (override === "opensky") {
     tiers.push({
       id: "opensky",
-      fn: async () => {
-        const result = await openskyFetchByIcao24(normalized, signal);
-        return result.flight ? [result.flight] : [];
-      },
+      fn: () => openskyFetchByIcao24(normalized, signal),
     });
   }
 
-  try {
-    const result = await runFallbackChain(tiers, signal);
-    return { flight: result.flights[0] ?? null };
-  } catch {
-    return { flight: null };
-  }
+  const result = await runFallbackChain(tiers, signal);
+  return { flight: result.flights[0] ?? null };
 }
 
-/**
- * Fetch flights matching a callsign.
- * No OpenSky tier: callsign search queries all aircraft (4-credit global fetch).
- */
 export async function fetchFlightByCallsign(
   callsign: string,
   signal?: AbortSignal,
 ): Promise<{ flight: FlightState | null }> {
-  const normalized = callsign.trim().toUpperCase();
-  if (!normalized) return { flight: null };
+  const normalized = callsign.trim().toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z0-9-]{1,8}$/.test(normalized)) return { flight: null };
 
   const parseOpts: ParseOptions = {
     includeGround: true,
@@ -466,7 +455,6 @@ export async function fetchFlightByCallsign(
   const tiers: NamedTier[] = [];
 
   if (override === "adsb" || override === "auto") {
-    // adsb.lol via proxy - primary data source
     tiers.push({
       id: "adsb",
       fn: async () => {
@@ -477,7 +465,6 @@ export async function fetchFlightByCallsign(
   }
 
   if (override === "airplanes" || override === "auto") {
-    // airplanes.live via proxy - secondary fallback
     tiers.push({
       id: "airplanes",
       fn: async () => {
@@ -487,12 +474,10 @@ export async function fetchFlightByCallsign(
     });
   }
 
-  // No OpenSky tier: callsign search queries all aircraft (4-credit global fetch)
-
-  try {
-    const result = await runFallbackChain(tiers, signal);
-    return { flight: result.flights[0] ?? null };
-  } catch {
-    return { flight: null };
+  if (override === "auto") {
+    // OpenSky does not support callsign lookup efficiently here.
   }
+
+  const result = await runFallbackChain(tiers, signal);
+  return { flight: result.flights[0] ?? null };
 }
