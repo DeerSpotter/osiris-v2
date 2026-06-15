@@ -17,7 +17,7 @@ const GA_ID_VALID = GA_ID && /^G-[A-Z0-9]+$/.test(GA_ID) ? GA_ID : null;
 const title = "Aeris - Real-Time 3D Flight Tracking";
 const description =
   "Track live flights in stunning 3D over the world's busiest airspaces. See real-time ADS-B data with altitude-aware rendering - low altitudes glow cyan, high altitudes shift to gold. Free and open source.";
-const siteUrl = "https://aeris.edbn.me";
+const siteUrl = "https://deerspotter.github.io/osiris-v2/aeris";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -49,9 +49,9 @@ export const metadata: Metadata = {
     "live air traffic",
     "flight path tracker",
   ],
-  authors: [{ name: "kewonit", url: "https://github.com/kewonit" }],
-  creator: "kewonit",
-  publisher: "kewonit",
+  authors: [{ name: "DeerSpotter", url: "https://github.com/DeerSpotter" }],
+  creator: "DeerSpotter",
+  publisher: "DeerSpotter",
   category: "travel",
   openGraph: {
     type: "website",
@@ -80,7 +80,7 @@ export const metadata: Metadata = {
   },
   alternates: { canonical: siteUrl },
   icons: {
-    icon: "/favicon.ico",
+    icon: "/osiris-v2/aeris/favicon.ico",
   },
   other: {
     "mobile-web-app-capable": "yes",
@@ -89,6 +89,24 @@ export const metadata: Metadata = {
     "apple-mobile-web-app-title": "Aeris",
   },
 };
+
+const mobileFocusPatch = `
+(() => {
+  const isCoarsePointer = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  if (!isCoarsePointer) return;
+
+  const visibleHasFocus = () => document.visibilityState === "visible";
+
+  try {
+    Object.defineProperty(document, "hasFocus", {
+      configurable: true,
+      value: visibleHasFocus,
+    });
+  } catch {
+    document.hasFocus = visibleHasFocus;
+  }
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -102,6 +120,7 @@ export default function RootLayout({
           name="viewport"
           content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
+        <script dangerouslySetInnerHTML={{ __html: mobileFocusPatch }} />
       </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <ThemeProvider
