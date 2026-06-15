@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Activity, Database, Globe2, Layers, MapPinned, Moon, Radar, Satellite } from 'lucide-react';
+import { Activity, Database, Globe2, Home, Layers, MapPinned, Moon, Radar, RefreshCcw, Satellite } from 'lucide-react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useAerisFlightFeed } from '@/hooks/useAerisFlightFeed';
 import { installOsirisMapRegistry } from '@/lib/osirisMapRegistry';
@@ -77,6 +77,22 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
   const flightUpdated = flightFeed.lastUpdated
     ? new Date(flightFeed.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : 'pending';
+
+  const refreshAircraft = () => {
+    void flightFeed.refresh();
+  };
+
+  const goHome = () => {
+    if (typeof window === 'undefined') return;
+
+    const ghPagesBase = '/osiris-v2';
+    const { origin, pathname } = window.location;
+    const homePath = pathname === ghPagesBase || pathname.startsWith(`${ghPagesBase}/`)
+      ? `${ghPagesBase}/`
+      : '/';
+
+    window.location.assign(`${origin}${homePath}`);
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#02040a] text-[#e8e6e0]">
@@ -154,6 +170,25 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Aircraft: <b className="text-[#00e5ff]">{flightFeed.total}</b></span>
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Render: <b className={deckOverlayEnabled ? 'text-[#00e676]' : 'text-[#d4af37]'}>{deckOverlayEnabled ? 'Deck.gl' : 'MapLibre'}</b></span>
         </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[9px] uppercase tracking-[0.16em]">
+          <button
+            onClick={refreshAircraft}
+            disabled={!flightLayerEnabled}
+            className="flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/10 px-3 py-2 text-[#d7edf4] transition hover:border-[#00e5ff]/45 disabled:cursor-not-allowed disabled:opacity-45"
+            title="Refresh aircraft positions now"
+          >
+            <RefreshCcw size={13} className={flightFeed.loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            onClick={goHome}
+            className="flex items-center justify-center gap-2 rounded-lg border border-[#d4af37]/25 bg-[#d4af37]/10 px-3 py-2 text-[#e8e6e0] transition hover:border-[#d4af37]/50"
+            title="Exit to OSIRIS home"
+          >
+            <Home size={13} />
+            Home
+          </button>
+        </div>
         {flightFeed.error && (
           <p className="mt-3 rounded border border-[#ff3d3d]/30 bg-[#ff3d3d]/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#ff9a9a]">
             {flightFeed.error}
@@ -190,6 +225,21 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
           title={mapStyle === 'dark' ? 'Satellite view' : 'Night mode'}
         >
           {mapStyle === 'dark' ? <Satellite className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </button>
+        <button
+          onClick={refreshAircraft}
+          disabled={!flightLayerEnabled}
+          className={`rounded-lg p-3 transition ${flightFeed.loading ? 'bg-[#00e5ff]/15 text-[#00e5ff]' : 'text-[#8fb8c8] hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-45`}
+          title="Refresh aircraft positions"
+        >
+          <RefreshCcw className={`h-5 w-5 ${flightFeed.loading ? 'animate-spin' : ''}`} />
+        </button>
+        <button
+          onClick={goHome}
+          className="rounded-lg p-3 text-[#8fb8c8] transition hover:bg-white/10"
+          title="Exit to OSIRIS home"
+        >
+          <Home className="h-5 w-5" />
         </button>
       </nav>
 
