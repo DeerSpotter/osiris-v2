@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type OsirisFlight = {
   callsign?: string;
@@ -35,6 +35,7 @@ type AerisFlightFeedState = {
   lastUpdated: string | null;
   source: string;
   total: number;
+  refresh: () => Promise<void>;
 };
 
 type RawAircraft = {
@@ -332,6 +333,45 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const inFlightRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      inFlightRef.current?.abort();
+    };
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!enabled) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+
+    inFlightRef.current?.abort();
+    const controller = new AbortController();
+    inFlightRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const payload = await fetchFlightFeed(controller.signal);
+      if (!mountedRef.current || controller.signal.aborted) return;
+
+      setData(payload);
+      setLastUpdated(payload.timestamp ?? new Date().toISOString());
+    } catch (err) {
+      if (!mountedRef.current) return;
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Flight feed failed');
+    } finally {
+      if (mountedRef.current && inFlightRef.current === controller) {
+        inFlightRef.current = null;
+        setLoading(false);
+      }
+    }
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -340,33 +380,6 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
       setError(null);
       setData(EMPTY_FLIGHT_DATA);
       return;
-    }
-
-    let stopped = false;
-
-    async function refresh() {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-
-      inFlightRef.current?.abort();
-      const controller = new AbortController();
-      inFlightRef.current = controller;
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const payload = await fetchFlightFeed(controller.signal);
-        if (stopped || controller.signal.aborted) return;
-
-        setData(payload);
-        setLastUpdated(payload.timestamp ?? new Date().toISOString());
-      } catch (err) {
-        if (stopped) return;
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err instanceof Error ? err.message : 'Flight feed failed');
-      } finally {
-        if (!stopped) setLoading(false);
-      }
     }
 
     refresh();
@@ -378,12 +391,11 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      stopped = true;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       inFlightRef.current?.abort();
     };
-  }, [enabled]);
+  }, [enabled, refresh]);
 
   const total = useMemo(() => countFlights(data), [data]);
 
@@ -394,5 +406,6 @@ export function useAerisFlightFeed(enabled: boolean): AerisFlightFeedState {
     lastUpdated,
     source: data.source ?? OSIRIS_FLIGHT_PROXY_URL,
     total,
+    refresh,
   };
 }
