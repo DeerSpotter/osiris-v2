@@ -67,23 +67,31 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
   const data = useMemo(() => flightFeed.data, [flightFeed.data]);
   const projection = mapMode === 'mercator' ? 'mercator' : 'globe';
   const deckOverlayEnabled = mapMode !== 'glb' && activeLayers.aeris_deck !== false && flightLayerEnabled;
-  const mapLayerState = useMemo(
-    () => deckOverlayEnabled
-      ? { ...activeLayers, flights: false, private: false, jets: false, military: false }
-      : activeLayers,
-    [activeLayers, deckOverlayEnabled],
-  );
+  const mapLayerState = useMemo(() => activeLayers, [activeLayers]);
   const flightStatus = flightFeed.error ? 'Feed error' : flightFeed.loading ? 'Updating' : 'Live';
   const flightUpdated = flightFeed.lastUpdated
     ? new Date(flightFeed.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : 'pending';
+  const aerisPanelClass = activeLayers.aeris_deck
+    ? 'absolute left-3 right-3 top-20 z-[240] rounded-xl border border-[#d4af37]/20 bg-black/70 p-3 backdrop-blur-xl lg:left-auto lg:right-4 lg:top-24 lg:w-[305px] lg:p-4'
+    : 'absolute right-4 top-24 z-[220] w-[305px] rounded-xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-xl max-lg:hidden';
 
   const refreshAircraft = () => {
     void flightFeed.refresh();
   };
 
   const toggleAerisDeck = () => {
-    setActiveLayers(prev => ({ ...prev, aeris_deck: !prev.aeris_deck }));
+    const launching = !activeLayers.aeris_deck;
+    if (launching && mapMode === 'glb') setMapMode('globe');
+
+    setActiveLayers(prev => ({
+      ...prev,
+      aeris_deck: !prev.aeris_deck,
+      flights: true,
+      private: true,
+      jets: true,
+      military: true,
+    }));
   };
 
   const goHome = () => {
@@ -104,24 +112,27 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
         {mapMode === 'glb' ? (
           <GlbMapCanvas activeLayers={activeLayers} />
         ) : (
-          <>
-            <OsirisMap
-              data={data}
-              activeLayers={mapLayerState}
-              projection={projection}
-              mapStyle={mapStyle === 'satellite' ? satelliteStyle : 'dark'}
-              demoMode={false}
-              theme="core"
-            />
-            <AerisDeckFlightOverlay
-              data={data}
-              activeLayers={activeLayers}
-              enabled={deckOverlayEnabled}
-              projection={projection}
-            />
-          </>
+          <OsirisMap
+            data={data}
+            activeLayers={mapLayerState}
+            projection={projection}
+            mapStyle={mapStyle === 'satellite' ? satelliteStyle : 'dark'}
+            demoMode={false}
+            theme="core"
+          />
         )}
       </ErrorBoundary>
+
+      {mapMode !== 'glb' && (
+        <ErrorBoundary name="Aeris aircraft overlay">
+          <AerisDeckFlightOverlay
+            data={data}
+            activeLayers={activeLayers}
+            enabled={deckOverlayEnabled}
+            projection={projection}
+          />
+        </ErrorBoundary>
+      )}
 
       <div className="pointer-events-none absolute inset-0 z-[120] bg-[radial-gradient(circle_at_center,transparent_0%,transparent_52%,rgba(0,0,0,.72)_100%)]" />
 
@@ -161,14 +172,15 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
         </div>
       </aside>
 
-      <aside className="absolute right-4 top-24 z-[220] w-[305px] rounded-xl border border-[#d4af37]/20 bg-black/55 p-4 backdrop-blur-xl max-lg:hidden">
-        <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.26em] text-[#d4af37]">
-          <Database size={14} /> Aeris flight feed
+      <aside className={aerisPanelClass}>
+        <div className="mb-3 flex items-center justify-between gap-2 font-mono text-[11px] uppercase tracking-[0.26em] text-[#d4af37]">
+          <span className="flex items-center gap-2"><Database size={14} /> Aeris flight feed</span>
+          <span className={activeLayers.aeris_deck ? 'text-[#00e676]' : 'text-[#7a8790]'}>{activeLayers.aeris_deck ? 'ON' : 'OFF'}</span>
         </div>
-        <p className="text-xs leading-5 text-[#b9cbd1]">
+        <p className="text-xs leading-5 text-[#b9cbd1] max-lg:hidden">
           OSIRIS now renders live ADS-B aircraft with an Aeris style Deck.gl overlay: altitude coloring, shadow dots, trails, labels for priority aircraft, and click popups with a crosshair center action.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-[#8fb8c8]">
+        <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-[#8fb8c8] lg:mt-4">
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Status: <b className={flightFeed.error ? 'text-[#ff3d3d]' : 'text-[#00e676]'}>{flightStatus}</b></span>
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Updated: <b className="text-[#d4af37]">{flightUpdated}</b></span>
           <span className="rounded border border-white/10 bg-white/[0.03] px-2 py-2">Aircraft: <b className="text-[#00e5ff]">{flightFeed.total}</b></span>
@@ -234,7 +246,7 @@ export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisComma
         <button
           onClick={toggleAerisDeck}
           className={`rounded-lg p-3 transition ${activeLayers.aeris_deck ? 'bg-[#00e676]/15 text-[#00e676]' : 'text-[#8fb8c8] hover:bg-white/10'}`}
-          title="Toggle Aeris aircraft overlay"
+          title="Launch Aeris aircraft mode"
         >
           <Database className="h-5 w-5" />
         </button>
