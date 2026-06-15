@@ -17,6 +17,22 @@ export const CITIES: City[] = [
     radius: 2.49,
   },
   {
+    id: "dxr",
+    name: "Danbury",
+    country: "US",
+    iata: "DXR",
+    coordinates: [-73.4822, 41.3715],
+    radius: 2.49,
+  },
+  {
+    id: "atl",
+    name: "Atlanta",
+    country: "US",
+    iata: "ATL",
+    coordinates: [-84.4281, 33.6367],
+    radius: 2.49,
+  },
+  {
     id: "lax",
     name: "Los Angeles",
     country: "US",
