@@ -5,6 +5,8 @@ on:
     branches: [master]
     paths:
       - 'docs/**'
+      - 'src/aeris/**'
+      - 'workers/osiris-flight-proxy/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -26,6 +28,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/aeris/package-lock.json
+
+      - name: Build static Aeris app
+        working-directory: src/aeris
+        env:
+          NEXT_PUBLIC_AERIS_BASE_PATH: /osiris-v2/aeris
+          NEXT_PUBLIC_OSIRIS_FLIGHT_PROXY: https://osiris-v2.spotterdeer.workers.dev
+        run: |
+          npm ci
+          rm -rf src/app/api
+          npm run build
+          rm -rf ../../docs/aeris
+          mkdir -p ../../docs/aeris
+          cp -R out/. ../../docs/aeris/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
