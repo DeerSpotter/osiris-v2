@@ -1,17 +1,17 @@
 import { FlightTracker } from "@/components/flight-tracker";
 import { isAirspaceConfigured } from "@/lib/airspace-config";
 
-const siteUrl = "https://aeris.edbn.me";
+const siteUrl = "https://deerspotter.github.io/osiris-v2/aeris";
 
 const jsonLd = [
   {
     "@context": "https://schema.org",
     "@type": "WebApplication",
     "@id": `${siteUrl}/#app`,
-    name: "Aeris",
+    name: "OSIRIS Aeris",
     url: siteUrl,
     description:
-      "Track live flights in stunning 3D over the world's busiest airspaces. See real-time ADS-B data with altitude-aware rendering - low altitudes glow cyan, high altitudes shift to gold. Free and open source.",
+      "Track live flights in 3D over selected airspaces using the OSIRIS Aeris deployment.",
     applicationCategory: "TravelApplication",
     operatingSystem: "Any",
     browserRequirements: "Requires WebGL support",
@@ -23,8 +23,8 @@ const jsonLd = [
     },
     author: {
       "@type": "Person",
-      name: "kewonit",
-      url: "https://github.com/kewonit",
+      name: "DeerSpotter",
+      url: "https://github.com/DeerSpotter/osiris-v2",
     },
     featureList: [
       "Real-time 3D flight tracking",
@@ -39,7 +39,7 @@ const jsonLd = [
     ],
     screenshot:
       "https://github.com/user-attachments/assets/9d1f50ed-be4e-4ef5-95ac-257e9129f8c8",
-    softwareVersion: "0.5.0",
+    softwareVersion: "0.8.4-osiris",
     isAccessibleForFree: true,
     inLanguage: "en",
   },
@@ -47,15 +47,15 @@ const jsonLd = [
     "@context": "https://schema.org",
     "@type": "WebSite",
     "@id": `${siteUrl}/#website`,
-    name: "Aeris",
+    name: "OSIRIS Aeris",
     url: siteUrl,
     description:
-      "Real-time 3D flight tracking - altitude-aware, visually stunning, and completely free.",
+      "Real-time 3D flight tracking as an OSIRIS Aeris mode deployment.",
     inLanguage: "en",
     publisher: {
       "@type": "Person",
-      name: "kewonit",
-      url: "https://github.com/kewonit",
+      name: "DeerSpotter",
+      url: "https://github.com/DeerSpotter/osiris-v2",
     },
     potentialAction: {
       "@type": "SearchAction",
@@ -73,7 +73,7 @@ const jsonLd = [
       {
         "@type": "ListItem",
         position: 1,
-        name: "Aeris - Real-Time 3D Flight Tracking",
+        name: "OSIRIS Aeris - Real-Time 3D Flight Tracking",
         item: siteUrl,
       },
     ],
