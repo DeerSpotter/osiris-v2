@@ -20,6 +20,7 @@ type CommandMapStyle = 'dark' | 'satellite';
 
 type OsirisCommandDashboardProps = {
   routeLabel?: string;
+  initialAerisMode?: boolean;
 };
 
 const satelliteStyle = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -41,10 +42,10 @@ const layerOrder = [
   ['sdk_sea', 'SDK sea'],
 ] as const;
 
-export default function OsirisCommandDashboard({ routeLabel = '/' }: OsirisCommandDashboardProps) {
+export default function OsirisCommandDashboard({ routeLabel = '/', initialAerisMode = false }: OsirisCommandDashboardProps) {
   const [mapMode, setMapMode] = useState<CommandMapMode>('globe');
   const [mapStyle, setMapStyle] = useState<CommandMapStyle>('dark');
-  const [aerisMode, setAerisMode] = useState(false);
+  const [aerisMode, setAerisMode] = useState(Boolean(initialAerisMode));
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
     aeris_deck: true,
     flights: true,
