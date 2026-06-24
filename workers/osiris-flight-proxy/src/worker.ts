@@ -157,7 +157,7 @@ async function handleSamgov(request: Request) {
 }
 
 export default {
-  async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/samgov' || url.pathname.startsWith('/samgov/')) {
       try {
@@ -167,6 +167,6 @@ export default {
       }
     }
 
-    return flightWorker.fetch(request, env, ctx);
+    return flightWorker.fetch(request);
   },
 };
