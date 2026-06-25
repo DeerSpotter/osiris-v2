@@ -1,5 +1,5 @@
 name = "osiris-v2"
-main = "workers/osiris-flight-proxy/src/worker.ts"
+main = "workers/osiris-flight-proxy/src/index.ts"
 compatibility_date = "2026-06-14"
 workers_dev = true
 
